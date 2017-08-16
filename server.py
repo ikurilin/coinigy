@@ -1,3 +1,4 @@
+# Coinigy server module bn
 from socketclusterclient import Socketcluster
 import logging
 from time import sleep
