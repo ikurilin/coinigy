@@ -34,11 +34,12 @@ class FXPair():
 
     #Trade event handler
     def tradeEventHandler(self, channel, *args):
-        self.logger.info("PAIR TRADE EVENT HANDLER %s with %d arguments" % (channel, len(args)))
+        return
+        self.logger.info("PAIR %s/%s TRADE EVENT HANDLER %s with %d arguments" % (self.base, self.quote, channel, len(args)))
         if len(args) != 1:
             return
         d = args[0]
-        self.logger.info(d)
+        #self.logger.info(d)
         #create a data frame row
         list = [{
             #"time_local" : d["timestamp"],
@@ -57,6 +58,7 @@ class FXPair():
 
     # exchange event handler: ORDER,
     def orderEventHandler(self, channel, *args):
+        return
         self.logger.info("PAIR EVENT HANDLER %s with %d arguments" % (channel,len(args)))
         if len(args) != 1:
             return
@@ -80,9 +82,9 @@ class FXPair():
             #dat['base_ccy'] = d['primary_curr_code']
             #dat['counter_ccy'] = d['secondary_curr_code']
 
-        self.logger.info(dat)
-        self.logger.info("BIDS BEFORE UPDATE")
-        self.logger.info( self.bids)
+        #self.logger.info(dat)
+        #self.logger.info("BIDS BEFORE UPDATE")
+        #self.logger.info( self.bids)
         asks = dat.loc[dat['ordertype'] == "Sell"]
         asks.drop(labels=["ordertype"], axis=1, inplace=True)
         asks.sort_values(by="price", ascending=False, inplace=True)
@@ -95,8 +97,8 @@ class FXPair():
         self.logger.info(self.bids)
 
         # UPDATE ASK BOOK
-        self.logger.info("ASKS BEFORE UPDATE")
-        self.logger.info(self.asks)
+        #self.logger.info("ASKS BEFORE UPDATE")
+        #self.logger.info(self.asks)
         self.asks = asks.head(self.askbookDepth)
         self.logger.info("ASKS AFTER UPDATE")
         self.logger.info(self.asks)
@@ -113,6 +115,9 @@ class FXPair():
 
     def getQuote(self):
         return self.quote
+
+    def getFullName(self):
+        return self.getBase() + "/" + self.getQuote()
 
     def updateAskBook(self, asks):
         pass

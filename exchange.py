@@ -1,6 +1,6 @@
 # crypto exchange
 import logging
-from server import CoinigyAPI
+from coinigy_server import CoinigyAPI
 from pair import FXPair
 import numpy as np
 
@@ -22,7 +22,7 @@ class Exchange():
         self.fxPairs = coinigyAPI.getFxPairs(code) # get all pairs
 
         # subscribe for all pairs in this exchange
-        self.fxPairs['pair_obj']=None # new column to store pair object
+        self.fxPairs['pair_obj']=np.nan # new column to store pair object
         self.logger.info(self.fxPairs)
         for i, (index, row) in enumerate(self.fxPairs.iterrows()):
             #c = row["exch_code"]
@@ -65,15 +65,11 @@ class Exchange():
             # pair will be in charge of processing all events
             #self.coinigyAPI.subscribe(channel, pair.tradeEventHandler)
 
-        #self.logger.info(self.fxPairs)
+        #self.fxPairs = self.fxPairs.loc[self.fxPairs["pair_obj"].bool()]
+        self.fxPairs = self.fxPairs.dropna() # drop raws with nan
+        self.logger.info(self.fxPairs)
 
 
-    # process ask handlers
-    def __askhandler(self, channel, error, *args):
-        pass
-
-    def __bidhandler(self, channel, error, *args):
-        pass
-
-    def __orderhandler(self, channel, error, *args):
-        pass
+    # retrun fx pairs available in the exchange
+    def getFxPairs(self):
+        return self.fxPairs["pair_obj"]
