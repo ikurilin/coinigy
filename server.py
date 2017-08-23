@@ -38,6 +38,9 @@ class CoinigyAPI :
     def getOrders(self, exchangeCode, pairCode):
         return self.rest.orders(exchangeCode, pairCode)
 
+    def getHistory(self, exchangeCode, pairCode):
+        return self.rest.history(exchangeCode, pairCode)
+
     # susbcribe for the channel
     # channelcode: "METHOD-EXCHANGECODE--PRIMARYCURRENCY--SECONDARYCURRENCY"
     # supported methods: TRADE, ORDER, NEWS, BLOCK, TICKER
