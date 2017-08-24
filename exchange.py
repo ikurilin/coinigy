@@ -9,8 +9,9 @@ g_apiKey="acc223ec3b64d19d8aa060bde7af0cb1"
 g_apiSecret="da3eaed8d1a426b51a447634796373ea"
 
 class Exchange():
-    def __init__(self, code, name, coinigyAPI, allowedPairs = [], askbookDepth = 5, bidBookDepth = 5, orderDepth = 5):
+    def __init__(self, code, name, coinigyAPI, allowedPairs = [], askbookDepth = 5, bidBookDepth = 5, orderDepth = 50):
         self.logger = logging.getLogger('root')
+        self.logger.disabled = True
         self.exchangeName = name
         self.exchangeCode = code
         self.askbookDepth = askbookDepth
@@ -31,25 +32,16 @@ class Exchange():
             if not row["mkt_name"] in allowedPairs and not not allowedPairs: # double not to trick Python convert list tp bool
                 continue # skipp all pairs which are not present in the allowedlist
             base, quote = row["mkt_name"].split("/")
-            # get historical data for pair
-            asks = coinigyAPI.getAsks(code, row["mkt_name"])
-            bids = coinigyAPI.getBids(code, row["mkt_name"])
-            history = coinigyAPI.getHistory(code, row["mkt_name"])
-            self.logger.info("ASKS")
-            self.logger.info(asks)
-            self.logger.info("BIDS")
-            self.logger.info(bids)
-            self.logger.info("HISTORY")
-            self.logger.info(history)
+
             # create pair
-            pair = FXPair(base, quote, row["exchmkt_id"],
+            pair = FXPair(base, quote,
+                          exchmkt_id = row["exchmkt_id"],
+                          exchange = self,
                           currentPrice=np.NaN,
-                          orderHistory=history,
-                          asks=asks,
-                          bids=bids,
                           askBookDepth= askbookDepth,
                           bidBookDepth = bidBookDepth,
                           orderHistoryDepth= orderDepth)
+
             self.fxPairs.set_value(index, 'pair_obj', pair)
 
             # subscribe for events
@@ -63,7 +55,7 @@ class Exchange():
             channel = "TRADE-" + row["exch_code"] + "--" + base + "--" + quote
             self.logger.info(channel)
             # pair will be in charge of processing all events
-            #self.coinigyAPI.subscribe(channel, pair.tradeEventHandler)
+            self.coinigyAPI.subscribe(channel, pair.tradeEventHandler)
 
         #self.fxPairs = self.fxPairs.loc[self.fxPairs["pair_obj"].bool()]
         self.fxPairs = self.fxPairs.dropna() # drop raws with nan
@@ -73,3 +65,7 @@ class Exchange():
     # retrun fx pairs available in the exchange
     def getFxPairs(self):
         return self.fxPairs["pair_obj"]
+
+    # set event handler
+    def setEventHandler(self, event, handler):
+        self.handlers[event] = handler

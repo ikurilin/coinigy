@@ -32,8 +32,10 @@ class FXNode(NodeMixin):
 
 
 class PriceArbitrage:
+    # class variables
+    logger = logging.getLogger('root')
+
     def __init__(self, exchange):
-        self.logger = logging.getLogger('root')
         self.exchange = exchange
         self.logger.info("Initiate Price Arbitrage Algo")
         self._buildFxTree()
@@ -45,7 +47,7 @@ class PriceArbitrage:
         self.logger.info(pairs)
 
         # climb up the tree to check if pair is above the node to prevent loops
-        def isNodeInTheTree(c, tree):
+        def isNodeInTheTree(c, tree): # tree is the terminal leaf
             a = c.getFullName()
             b = tree.getFullName()
             if a == b:
@@ -72,7 +74,12 @@ class PriceArbitrage:
             return tree
 
         root = FXNode("root")
-        tree = generateFxTree(root, pairs)
+        self.tree = generateFxTree(root, pairs)
+
+        # set event triggers
+        self.exchange.setEventHandler("TRADE", self.updateTrade)
+        self.exchange.setEventHandler("ORDER", self.updateOrder)
+
         #print(RenderTree(root))
         print("----******-----")
         for pre, _, node in RenderTree(root):
@@ -82,3 +89,10 @@ class PriceArbitrage:
         self.logger.info("-------FX pairs------------")
         self.logger.info(pairs)
         a = 5
+
+    # update algo for data change
+    def updateTrade(self, currencyPair, event):
+        pass
+
+    def updateOrder(self, currencyPair, event):
+        pass

@@ -4,33 +4,22 @@ import numpy as np
 import pandas as pd
 
 class FXPair():
-    def __init__(self, base, quote, exchmkt_id,
-                 currentPrice = None, orderHistory = None, asks = None, bids = None,
-                 askBookDepth = 5, bidBookDepth = 5, orderHistoryDepth = 50):
+    def __init__(self, base, quote, exchmkt_id, exchange,
+                 currentPrice = None, askBookDepth = 5, bidBookDepth = 5, orderHistoryDepth = 50):
         self.logger = logging.getLogger('root')
+        self.logger.disabled = True
         self.base = base
         self.quote = quote
         self.exchmkt_id = exchmkt_id
+        self.exchange = exchange
         self.currentFX = currentPrice
         self.askbookDepth = askBookDepth
         self.bidBookDepth = bidBookDepth
         self.orderHistoryDepth = orderHistoryDepth  # history
-        # save initial data
-        if orderHistory is not None:
-            self.orderHistory = orderHistory.head(orderHistoryDepth) # history
-            self.orderHistory.drop(labels=["base_ccy","counter_ccy"], axis=1, inplace=True)
-        else:
-            self.orderHistory = pd.DataFrame()
-        if asks is not None:
-            self.asks = asks.head(askBookDepth)
-            self.asks.drop(labels=["base_ccy","counter_ccy"], axis=1, inplace=True)
-        else:
-            self.asks = pd.DataFrame()
-        if  bids is not None:
-            self.bids = bids.head(bidBookDepth)
-            self.bids.drop(labels=["base_ccy", "counter_ccy"], axis=1, inplace=True)
-        else:
-            self.bids = pd.DataFrame()
+        self.orderHistory = pd.DataFrame()
+        self.asks = pd.DataFrame()
+        self.bids = pd.DataFrame()
+
 
     #Trade event handler
     def tradeEventHandler(self, channel, *args):

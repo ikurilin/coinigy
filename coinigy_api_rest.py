@@ -2,6 +2,7 @@ from collections import namedtuple
 import numpy as np
 import pandas as pd
 import requests
+import logging
 
 credentials = namedtuple('credentials', ('api', 'secret', 'endpoint'))
 connection = namedtuple('connection', ('hostname', 'port', 'secure'))
@@ -15,6 +16,7 @@ class CoinigyREST:
         https://github.com/coinigy/api
     """
     def __init__(self, acct):
+        self.logger = logging.getLogger('root2')
         self.api = acct.api
         self.secret = acct.secret
         self.endpoint = acct.endpoint
@@ -34,8 +36,10 @@ class CoinigyREST:
         if query is not None:
             payload.update(query)
         r = requests.post(url, data=payload)
-        if 'error' in r.json().keys():
-            print(r.json()['error'])
+        self.logger.debug("****REQUEST RETURN: %s" % url)
+        self.logger.debug(r.status_code)
+        if r.status_code != 200: # or 'error' in r.json().keys():
+            #print(r.json()['error'])
             return
 
         if json:
@@ -50,7 +54,9 @@ class CoinigyREST:
         :param data_type: currently supported are 'history', 'bids', 'asks', 'orders'
         :return:
         """
-        d = self.request('data', exchange_code=exchange, exchange_market=market, type=data_type, json=True)['data']
+        m = self.request('data', exchange_code=exchange, exchange_market=market, type=data_type, json=True) # ['data']
+        if m is not None: d = m['data']
+        else: return
 
         res = dict()
 
@@ -107,13 +113,19 @@ class CoinigyREST:
         return self.request('markets',exchange_code=exchange)
 
     def history(self, exchange, market):
-        return self.data(exchange=exchange, market=market, data_type='history')['history']
+        x = self.data(exchange=exchange, market=market, data_type='history')
+        if x is not None: return x['history']
+        else: return
 
     def asks(self, exchange, market):
-        return self.data(exchange=exchange, market=market, data_type='asks')['asks']
+        x = self.data(exchange=exchange, market=market, data_type='asks')
+        if x is not None: return x['asks']
+        else: return
 
     def bids(self, exchange, market):
-        return self.data(exchange=exchange, market=market, data_type='bids')['bids']
+        x = self.data(exchange=exchange, market=market, data_type='bids')
+        if x is not None: return x['bids']
+        else: return
 
     def orders(self, exchange, market):
         return self.data(exchange=exchange, market=market, data_type='orders')

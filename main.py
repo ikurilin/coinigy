@@ -16,7 +16,7 @@ print("Start")
 coinigyAPI = CoinigyAPI(apiKey="acc223ec3b64d19d8aa060bde7af0cb1",
                 apiSecret="da3eaed8d1a426b51a447634796373ea")
 # create OK COIN exchange
-okExchange = Exchange('GATE', 'GATECOIN',coinigyAPI, allowedPairs=["BTC/EUR", "BTC/HKD", "ETH/BTC", "ETH/EUR","PAY/ETH", "PAY/BTC", "WGC/ETH"])
+okExchange = Exchange('GATE', 'GATECOIN',coinigyAPI) # , allowedPairs=["BTC/EUR", "BTC/HKD", "ETH/BTC", "ETH/EUR","PAY/ETH", "PAY/BTC", "WGC/ETH"]
 
 algo = PriceArbitrage(okExchange)
 
