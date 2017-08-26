@@ -41,7 +41,7 @@ class Exchange():
                           askBookDepth= askbookDepth,
                           bidBookDepth = bidBookDepth,
                           orderHistoryDepth= orderDepth)
-
+            #save pair in the matrix
             self.fxPairs.set_value(index, 'pair_obj', pair)
 
             # subscribe for events
@@ -66,6 +66,44 @@ class Exchange():
     def getFxPairs(self):
         return self.fxPairs["pair_obj"]
 
+    def requestAskBook(self, pair):
+        asks = self.coinigyAPI.getAsks(self.exchangeCode, pair.getPairCode())
+        if asks is not None:
+            pair.updateAskBook(asks)
+
+    def requestBidBook(self, pair):
+            bids = self.coinigyAPI.getBids(self.exchangeCode, pair.getPairCode())
+            if bids is not None:
+                pair.updateBidBook(bids)
+
     # set event handler
-    def setEventHandler(self, event, handler):
-        self.handlers[event] = handler
+    def setEventHandler(self, tradeHandler = None, orderHandler = None):
+        if tradeHandler is not None: self.userTradeHandler = tradeHandler
+        if orderHandler is not None: self.userOrderHandler = orderHandler
+
+    #Trade Handler (called by FXPair)
+    def tradeHandler(self, updatedPair):
+        if self.userTradeHandler is not None: self.userTradeHandler(updatedPair) # call user call back
+
+    #Order handler (called by FXPair)
+    def orderHandler(self, updatedPair):
+        if self.userOrderHandler is not None: self.userOrderHandler(updatedPair) # call user call back
+
+    # convert currency
+    def getExchangeRate(self, _from, _to, _type='ASK'):
+        if _from == _to:
+            return 1
+
+        for  index, row in self.fxPairs.iterrows():
+            c = row['pair_obj']
+            if c.getQuote() == _to and c.getBase() == _from:
+                if _type == 'ASK':
+                    return c.getAverageAskPrice(1)
+                else:
+                    return c.getAverageBidPrice(1)
+            elif  c.getQuote() == _from and c.getBase() == _to:
+                if _type == 'ASK':
+                    return 1/c.getAverageAskPrice(1)
+                else:
+                    return 1/c.getAverageBidPrice(1)
+        raise # error
