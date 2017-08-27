@@ -19,6 +19,8 @@ class FXPair():
         self.tradeHistory = pd.DataFrame()
         self.asks = pd.DataFrame()
         self.bids = pd.DataFrame()
+        self.orderForceRequestInitiated = [] # keep track of force requests to get bids (call only once, data normally should be received via subscribe)
+        #self.asksForceRequestInitiated = [] # keep track of force requests to get bids (call only once, data normally should be received via subscribe)
 
 
     #Trade event handler
@@ -99,18 +101,18 @@ class FXPair():
         0       36360.0   0.13400       4872.240
         1       36300.0   1.00000       36300.000
         '''
-        if not askDataFrame.empty:
-            self.asks = askDataFrame.head(self.askbookDepth)
-            self.logger.info("ASKS AFTER UPDATE")
-            self.logger.info(self.asks)
+        #if not askDataFrame.empty:
+        self.asks = askDataFrame.head(self.askbookDepth)
+        self.logger.info("ASKS AFTER UPDATE")
+        self.logger.info(self.asks)
 
     # update bids data
     def updateBidBook(self, bidDataFrame):
         # UPDATE BID BOOK
-        if not bidDataFrame.empty:
-            self.bids = bidDataFrame.head(self.bidBookDepth)
-            self.logger.info("BIDS AFTER UPDATE")
-            self.logger.info(self.bids)
+        #if not bidDataFrame.empty:
+        self.bids = bidDataFrame.head(self.bidBookDepth)
+        self.logger.info("BIDS AFTER UPDATE")
+        self.logger.info(self.bids)
 
     # set current price
     def setCurrentFX(self, fx):
@@ -136,18 +138,27 @@ class FXPair():
     def requestBidBook(self):
         self.exchange.requestBidBook(self)
 
+    def requestOrderBook(self):
+        self.exchange.requestOrderBook(self)
+
     def addTradingHistory(self, trades):
         pass
 
     def getAverageAskPrice(self, amt):
-        self.logger.info("Get average ASK price for %d " % amt)
-        self.logger.info(self.asks)
+        self.logger.info("Get average ASK price for %d  %s" % (amt, self.getPairCode()))
+        #self.logger.info(self.asks)
         if not self.isAskAvailable():
             #self.logger.info(self)
-            self.requestAskBook() # request new data
-            if not self.isAskAvailable():
-                self.logger.debug("ASK info is not available for %s " % self.getPairCode())
-                raise # no ask information yet available
+            if not self.getPairCode() in self.orderForceRequestInitiated:
+                # initiate forced data request
+                self.orderForceRequestInitiated.append(self.getPairCode()) # force request only once
+                #self.requestAskBook() # request new data
+                self.requestOrderBook()
+                if not self.isAskAvailable():
+                    self.logger.debug("ASK info is not available for %s " % self.getPairCode())
+                    #raise # no ask information yet available
+                    return 0 # no price available
+            else: return 0 # force request was alredy issued but still there is no data
         # find how deep need to go to fulfill required qnt
         a = ((self.asks['quantity']*self.asks['price']).cumsum() <= amt) # boolean vector - True : this price will be used
         a[0] = True # don't skip first row (when can fulfill the order from the first row)
@@ -166,14 +177,20 @@ class FXPair():
         :param amt:
         :return:
         '''
-        self.logger.info("Get average BID price for %d " % amt)
-        self.logger.info(self.bids)
+        self.logger.info("Get average BID price for %d %s" % (amt, self.getPairCode()))
+        #self.logger.info(self.bids)
         if not self.isBidAvailable():
             self.logger.info("@@ Manual Bid book request for %s" % self.getPairCode())
-            self.requestBidBook()
-            if not self.isBidAvailable():
-                self.logger.debug("BID info is not available for %s " % self.getPairCode())
-                raise # no bid information yet available
+            if not self.getPairCode() in self.orderForceRequestInitiated:
+                # initiate forced data request
+                self.orderForceRequestInitiated.append( self.getPairCode()) # add record
+                #self.requestBidBook()
+                self.requestOrderBook()
+                if not self.isBidAvailable():
+                    self.logger.debug("BID info is not available for %s " % self.getPairCode())
+                    #raise # no bid information yet available
+                    return 0 # no price available
+            else: return 0 # forced request was sent but still there is no data
         # find how deep need to go to fulfill required qnt
         a = ((self.bids['quantity'] * self.bids['price']).cumsum() <= amt) # boolean vector - True : this price will be used
         a[0] = True # don't skip first row (when can fulfill the order from the first row)

@@ -5,17 +5,17 @@ from anytree import Node, RenderTree,  NodeMixin, Walker
 from pair import FXPair
 
 class FXNode(NodeMixin):
-    m_alternatives = {} # pool of paths leading to the same BASE/QUOTE pairs
+    m_samePairDifferentPathPool = {} # pool of leaves with the same pairs
     def __init__(self, name, fxPair = None, parent = None):
         self.name = name
         self.fxPair = fxPair
         self.parent = parent
-        # keep list of alternatives
+        # keep track of all alternatives
         if fxPair is not None:
-            if fxPair not in FXNode.m_alternatives.keys():
-                FXNode.m_alternatives[fxPair] = [self] # add first element
+            if fxPair not in FXNode.m_samePairDifferentPathPool.keys():
+                FXNode.m_samePairDifferentPathPool[fxPair] = [self] # add first element
             else:
-                FXNode.m_alternatives[fxPair].append(self)
+                FXNode.m_samePairDifferentPathPool[fxPair].append(self)
 
 
     def getFXPair(self):
@@ -101,7 +101,7 @@ class PriceArbitrage:
         self.logger.info(pairs)
 
         #find opportunity
-        self.findArbitrageOpportunity()
+        #self.findArbitrageOpportunity()
 
     # update algo for data change
     def updateTradeHandler(self, currencyPair):
@@ -118,30 +118,29 @@ class PriceArbitrage:
         # LONG position: from top to leaf
 
         #ierate tree from root to the leaves to calculate terminal conversion rate in the leaves
-        def estimateRates(longVal, shortVal, root, longStr):
+        def estimateRates(longVal, shortVal, root, longStr, shortStr):
             r = root.getFXPair()
             # rates reflect current order book status and amt to exchange
 
-            ex_rate1 = 0 # error signal
             v1 = 0
-            if r.isBidAvailable():
-                ex_rate1 = r.getAverageBidPrice(longVal)  # use bid price here
+            ex_rate1 = r.getAverageAskPrice(longVal)  # at what price I can buy
+            if ex_rate1 != 0:
                 v1 = longVal / ex_rate1  # convert val to Node base currency
-            ex_rate2 = 0 # error signal
-            v2 = 0
-            if r.isAskAvailable():
-                ex_rate2 = r.getAverageAskPrice(shortVal)  # use ask price
-                v2 = shortVal * ex_rate2
+            ex_rate2 = r.getAverageBidPrice(shortVal)  # at what price I can sell
+            v2 = shortVal * ex_rate2
 
+            # conversion line for debug purposes
             s1 = longStr + "-> " + str(v1) + " " + r.getBase() + "@" + str(ex_rate1)
+            s2 = str(v2) + " " + r.getBase() + "@" +  str(ex_rate2) + "->" + shortStr
 
             if root.is_leaf: # reached leaf - save accumulated long value
                 root.longValue = v1  # value of 1 BTC expressed in terms of base value of this currency (base)
                 root.longStr = s1
                 root.shortValue = v2 # value of 1 unit of this base currency expressed in terms of quote currency of the tree root
+                root.shortStr = s2
             else:
                 for n in root.children:
-                    estimateRates(v1, v2, n, s1)
+                    estimateRates(v1, v2, n, s1, s2)
 
         # Combined LONG / SHORT LOOP: start with 1 BTC
         root = self.tree.root # get root
@@ -155,27 +154,73 @@ class PriceArbitrage:
             v1 = x  # 1 * ex_rate1 # long local currency worth of 1 BTC
             v2 = 1  # short value
             s1 = "1 BTC -> " + str(x) + " " + pair.getQuote()
-            estimateRates(v1, v2, n, s1)
+            s2 = pair.getBase()
+            estimateRates(v1, v2, n, s1, s2)
         # print alternatives
-        a = FXNode.m_alternatives.keys()
+        # unwrap nested tuples
+        def unwrap(x):
+            if isinstance(x, tuple):
+                s = ""
+                for t in x:
+                    s += unwrap(t)
+                return s
+            else:
+                return x.name + " "
+
+        a = FXNode.m_samePairDifferentPathPool.keys()
         w = Walker()
-        for k in FXNode.m_alternatives.keys():
-            alternative_list = FXNode.m_alternatives[k]
+        for k in FXNode.m_samePairDifferentPathPool.keys():
+            alternative_list = FXNode.m_samePairDifferentPathPool[k]
             print("------PAIR %s" % (k.getPairCode()))
             for c in alternative_list:
                 if not c.is_leaf:
                     continue # iterate only leaves
-                # unwrap nested tuples
-                def unwrap(x):
-                    if isinstance(x, tuple):
-                        s = ""
-                        for t in x:
-                            s += unwrap(t)
-                        return s
-                    else:
-                        return x.name + " "
                 path = w.walk(root, c)
                 print("LONG: %f : %s >> %s"  % (c.longValue, unwrap(path), c.longStr))
+                print("SHORT: %f : %s " % (c.shortValue,  c.shortStr))
 
 
+        print("FINISH")
+
+    def findArbitrageOpportunity2(self):
+        root = self.tree.root  # get root
+        #a = FXNode.m_samePairDifferentPathPool.keys()
+        w = Walker() # tree walker
+        # unwrap nested tuple returned by Walker to a flat list
+        def unwrapWalkerToFlatList(x):
+            if isinstance(x, tuple):
+                if len(x) == 0: return []
+                s = []
+                for t in x:
+                    s.extend(unwrapWalkerToFlatList(t))
+                return s
+            else:
+                return [x]
+
+        for k in FXNode.m_samePairDifferentPathPool.keys(): # iterate all pairs
+            alternative_list = FXNode.m_samePairDifferentPathPool[k] # get list of leaves representing same pair but with different conversion path
+            print("------PAIR %s" % (k.getPairCode()))
+            for c in alternative_list: # iterate all leaves (same pair but different paths)
+                if not c.is_leaf:
+                    continue  # iterate only leaves
+                path = unwrapWalkerToFlatList(w.walk(root, c)) # get path from root to this leaf
+                # calculate conversion rates
+                n= path[1] # first element should be first pair (zero/0 element is a fake "root" element)
+                pair = n.getFXPair()
+                longVal = self.exchange.getExchangeRate('BTC', pair.getQuote(), 'BID')
+                s1 = "1 BTC -> " + str(longVal) + " " + pair.getQuote()
+                shortVal = 1
+                for m in path:
+                    mp = m.getFXPair()
+                    if mp is None: continue # skip "root" element
+                    ex_rate1 = mp.getAverageAskPrice(longVal)  # at what price I can buy
+                    if ex_rate1 != 0:
+                        longVal = longVal / ex_rate1  # convert val to Node base currency
+                    s1 = s1 + "-> " + str(longVal) + " " + mp.getBase() + "@" + str(ex_rate1)
+                    ex_rate2 = mp.getAverageBidPrice(shortVal)  # at what price I can sell
+                    shortVal = shortVal * ex_rate2
+                c.longVal = longVal
+                c.shortVal = shortVal
+                print("LONG: %f : %s" % (c.longVal,  s1))
+                print("SHORT: %f  " % (c.shortVal))
         print("FINISH")

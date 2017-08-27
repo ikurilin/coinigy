@@ -10,8 +10,8 @@ g_apiSecret="da3eaed8d1a426b51a447634796373ea"
 
 class Exchange():
     def __init__(self, code, name, coinigyAPI, allowedPairs = [], askbookDepth = 5, bidBookDepth = 5, orderDepth = 50):
-        self.logger = logging.getLogger('root')
-        self.logger.disabled = True
+        self.logger = logging.getLogger('exchange')
+        #self.logger.disabled = True
         self.exchangeName = name
         self.exchangeCode = code
         self.askbookDepth = askbookDepth
@@ -48,18 +48,18 @@ class Exchange():
             # ORDER
             # "METHOD-EXCHANGECODE--PRIMARYCURRENCY--SECONDARYCURRENCY"
             channel = "ORDER-" + row["exch_code"] + "--" + base + "--" + quote
-            self.logger.info(channel)
+            self.logger.info("SUSBSCRIBE %s" % channel)
             # pair will be in charge of processing all events
             self.coinigyAPI.subscribe(channel, pair.orderEventHandler)
             # TRADE
             channel = "TRADE-" + row["exch_code"] + "--" + base + "--" + quote
-            self.logger.info(channel)
+            self.logger.info("SUSBSCRIBE %s" % channel)
             # pair will be in charge of processing all events
             self.coinigyAPI.subscribe(channel, pair.tradeEventHandler)
 
         #self.fxPairs = self.fxPairs.loc[self.fxPairs["pair_obj"].bool()]
         self.fxPairs = self.fxPairs.dropna() # drop raws with nan
-        self.logger.info(self.fxPairs)
+        #self.logger.info(self.fxPairs)
 
 
     # retrun fx pairs available in the exchange
@@ -75,6 +75,12 @@ class Exchange():
             bids = self.coinigyAPI.getBids(self.exchangeCode, pair.getPairCode())
             if bids is not None:
                 pair.updateBidBook(bids)
+
+    def requestOrderBook(self, pair):
+            orders = self.coinigyAPI.getOrders(self.exchangeCode, pair.getPairCode())
+            if orders is not None:
+                pair.updateBidBook(orders["bids"])
+                pair.updateAskBook(orders["asks"])
 
     # set event handler
     def setEventHandler(self, tradeHandler = None, orderHandler = None):

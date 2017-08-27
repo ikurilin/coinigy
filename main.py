@@ -17,9 +17,10 @@ coinigyAPI = CoinigyAPI(apiKey="acc223ec3b64d19d8aa060bde7af0cb1",
                 apiSecret="da3eaed8d1a426b51a447634796373ea")
 # create OK COIN exchange
 # , allowedPairs=["1ST/BTC","BTC/HKD","ETH/HKD","ETH/BTC"]
-okExchange = Exchange('OK', 'OKCOIN',coinigyAPI) # , allowedPairs=["BTC/EUR", "BTC/HKD", "ETH/BTC", "ETH/EUR","PAY/ETH", "PAY/BTC", "WGC/ETH"]
+okExchange = Exchange('GATE', 'GATECOIN',coinigyAPI) # , allowedPairs=["BTC/EUR", "BTC/HKD", "ETH/BTC", "ETH/EUR","PAY/ETH", "PAY/BTC", "WGC/ETH"]
 
 algo = PriceArbitrage(okExchange)
+algo.findArbitrageOpportunity2()
 
 while (True) :
     pass
