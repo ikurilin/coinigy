@@ -7,7 +7,7 @@ class FXPair():
     def __init__(self, base, quote, exchmkt_id, exchange,
                  currentPrice = None, askBookDepth = 5, bidBookDepth = 5, orderHistoryDepth = 50):
         self.logger = logging.getLogger('FXPair')
-        #self.logger.disabled = True
+        self.logger.disabled = True
         self.base = base
         self.quote = quote
         self.exchmkt_id = exchmkt_id

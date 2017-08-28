@@ -41,24 +41,54 @@ class FXNode(NodeMixin):
 
 class PriceArbitrage:
     # class variables
-    logger = logging.getLogger('root')
+    logger = logging.getLogger('price arbitrage')
 
     def __init__(self, exchange):
         self.exchange = exchange
         self.logger.info("Initiate Price Arbitrage Algo")
-        self._buildFxTree()
+        self._buildFxTree() # build fx tree for all possible conversions
+        # build leaf lists
+        root = self.tree.root  # get root
+        w = Walker()  # tree walker
+        # unwrap nested tuple returned by Walker to a flat list of FXPair
+        def unwrapWalkerToFlatList(x):
+            if isinstance(x, tuple):
+                if len(x) == 0: return []
+                s = []
+                for t in x:
+                    s.extend(unwrapWalkerToFlatList(t))
+                return s
+            else:
+                if x.getFXPair() is None: return [] # skip root element
+                else: return [x.getFXPair()]
+
+        self.conversion_paths = {} # all conversion paths for the pair <pair: [pair1, pair2...]>
+        # build list of all conversion paths
+        for k in FXNode.m_samePairDifferentPathPool.keys():  # iterate all pairs
+            alternative_list = FXNode.m_samePairDifferentPathPool[k]  # get list of leaves representing same pair but with different conversion path
+            paths = []
+            for c in alternative_list:  # iterate all leaves (same pair but different paths)
+                if not c.is_leaf:
+                    continue  # iterate only leaves
+                path = unwrapWalkerToFlatList(w.walk(root, c))  # get path from root to this leaf
+                paths.append(path)
+
+            if not k in self.conversion_paths.keys():
+                self.conversion_paths[k] = list(paths)
+            else:
+                self.conversion_paths[k].append(list(paths))
+
+
+        # set event triggers
+        self.exchange.setEventHandler(tradeHandler=self.updateTradeHandler, orderHandler=self.updateOrderHandler)
 
     #bild tree representing all possible fx conversion rates
     def _buildFxTree(self):
         # build all fx conversion paths
         pairs = self.exchange.getFxPairs()
         self.logger.info(pairs)
-
-
-
         # Generate tree for all possible conversion rate (recursive)
         def generateFxTree(tree, pairs):
-
             # climb up the tree (recursive) to check if pair is above the node to prevent loops
             def isNodeInTheTree(c, tree):  # tree is the terminal leaf
                 a = c.getPairCode()
@@ -70,7 +100,6 @@ class PriceArbitrage:
                         return isNodeInTheTree(c, tree.parent)
                     else:
                         return False  # reached the root
-
             for c in pairs:
                 if isNodeInTheTree(c, tree):
                     continue
@@ -87,9 +116,6 @@ class PriceArbitrage:
         # generate currency exchange options
         root = FXNode("root")
         self.tree = generateFxTree(root, pairs)
-
-        # set event triggers
-        self.exchange.setEventHandler(tradeHandler=self.updateTradeHandler, orderHandler=self.updateOrderHandler)
 
         #print(RenderTree(root))
         print("----******-----")
@@ -110,7 +136,7 @@ class PriceArbitrage:
 
     def updateOrderHandler(self, currencyPair):
         self.logger.info("Process ORDER update for pair %s" % (currencyPair.getPairCode()))
-        #self.findArbitrageOpportunity()
+        self.pairUpdateHandler(currencyPair)
 
     def findArbitrageOpportunity(self):
         # find spot arbitrage opportunity in the exchange
@@ -182,45 +208,70 @@ class PriceArbitrage:
 
         print("FINISH")
 
-    def findArbitrageOpportunity2(self):
-        root = self.tree.root  # get root
-        #a = FXNode.m_samePairDifferentPathPool.keys()
-        w = Walker() # tree walker
-        # unwrap nested tuple returned by Walker to a flat list
-        def unwrapWalkerToFlatList(x):
-            if isinstance(x, tuple):
-                if len(x) == 0: return []
-                s = []
-                for t in x:
-                    s.extend(unwrapWalkerToFlatList(t))
-                return s
-            else:
-                return [x]
 
-        for k in FXNode.m_samePairDifferentPathPool.keys(): # iterate all pairs
-            alternative_list = FXNode.m_samePairDifferentPathPool[k] # get list of leaves representing same pair but with different conversion path
-            print("------PAIR %s" % (k.getPairCode()))
-            for c in alternative_list: # iterate all leaves (same pair but different paths)
-                if not c.is_leaf:
-                    continue  # iterate only leaves
-                path = unwrapWalkerToFlatList(w.walk(root, c)) # get path from root to this leaf
-                # calculate conversion rates
-                n= path[1] # first element should be first pair (zero/0 element is a fake "root" element)
-                pair = n.getFXPair()
-                longVal = self.exchange.getExchangeRate('BTC', pair.getQuote(), 'BID')
-                s1 = "1 BTC -> " + str(longVal) + " " + pair.getQuote()
-                shortVal = 1
-                for m in path:
-                    mp = m.getFXPair()
-                    if mp is None: continue # skip "root" element
-                    ex_rate1 = mp.getAverageAskPrice(longVal)  # at what price I can buy
-                    if ex_rate1 != 0:
-                        longVal = longVal / ex_rate1  # convert val to Node base currency
-                    s1 = s1 + "-> " + str(longVal) + " " + mp.getBase() + "@" + str(ex_rate1)
-                    ex_rate2 = mp.getAverageBidPrice(shortVal)  # at what price I can sell
-                    shortVal = shortVal * ex_rate2
-                c.longVal = longVal
-                c.shortVal = shortVal
-                print("LONG: %f : %s" % (c.longVal,  s1))
-                print("SHORT: %f  " % (c.shortVal))
-        print("FINISH")
+    def pairUpdateHandler(self, pair):
+        nodes = FXNode.m_samePairDifferentPathPool[pair]
+        list_to_update = []
+        for n in nodes:
+            descendants = n.descendants + (n,)
+            for r in descendants:
+                if not r.is_leaf: continue
+                p = r.getFXPair()
+                if p in list_to_update: continue
+                list_to_update.append(p)
+                self.updateArbitrageDataForPair(p)
+
+
+    # recalculate arbitrage for a given pair
+    def updateArbitrageDataForPair(self, pair):
+        self.logger.info("------PAIR %s" % (pair.getPairCode()))
+        # maximum conversion path
+        maxValue = {
+            "long" : {
+                "val" : 0,
+                "path": []
+            },
+            "short" : {
+                "val" : 0,
+                'btc_val' : 0,
+                "path" : []
+            }
+        }
+        a = self.conversion_paths.keys()
+        b = self.conversion_paths[pair]
+        for path in self.conversion_paths[pair]:
+            # calculate conversion rates
+            firstPair = path[0]  # first element should be first pair (zero/0 element is a fake "root" element)
+            longVal = self.exchange.getExchangeRate('BTC', firstPair.getQuote(), 'ASK')
+            ex_rate3 = self.exchange.getExchangeRate(firstPair.getQuote(), 'BTC', 'BID')
+            s1 = "1 BTC -> " + str(longVal) + " " + firstPair.getQuote()
+            shortVal = 1
+
+            for p in path: # iterate all leaves (same pair but different paths)
+                ex_rate1 = p.getAverageAskPrice(longVal)  # at what price I can buy
+                if ex_rate1 != 0:
+                    longVal = longVal / ex_rate1  # convert val to Node base currency
+                s1 = s1 + "-> " + str(longVal) + " " + p.getBase() + "@" + str(ex_rate1)
+                ex_rate2 = p.getAverageBidPrice(shortVal)  # at what price I can sell
+                shortVal = shortVal * ex_rate2
+
+            # keep track of max
+            if longVal > maxValue['long']['val']:
+                maxValue['long']['val'] = longVal
+                maxValue['long']['path'] = path
+            if shortVal * ex_rate3 > maxValue['short']['btc_val']:
+                maxValue['short']['btc_val'] = shortVal * ex_rate3
+                maxValue['short']['path'] = path
+                maxValue['short']['val'] = shortVal
+
+            self.logger.info(" *** LONG: %f : %s" % (longVal,  s1))
+
+            self.logger.info(" *** SHORT: %f %s == %f BTC " % (shortVal, firstPair.getQuote(), shortVal * ex_rate3))
+
+        pair.arbitrage = maxValue # save arbitrage data
+        # print max
+        self.logger.info(" ------ MAXIMUM VALUES FOR THE PAIR %s " % pair.getPairCode())
+        self.logger.info("LONG: %f : %s" % (maxValue["long"]["val"], s1))
+        self.logger.info("SHORT: %f BTC" % (maxValue["short"]["btc_val"]))
+        arbitrage = maxValue['long']['val']*maxValue['short']['btc_val'] - 1
+        print('Arbitrage value: %f BTC per 1 BTC cycle' %arbitrage)

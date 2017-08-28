@@ -11,7 +11,7 @@ g_apiSecret="da3eaed8d1a426b51a447634796373ea"
 class Exchange():
     def __init__(self, code, name, coinigyAPI, allowedPairs = [], askbookDepth = 5, bidBookDepth = 5, orderDepth = 50):
         self.logger = logging.getLogger('exchange')
-        #self.logger.disabled = True
+        self.logger.disabled = True
         self.exchangeName = name
         self.exchangeCode = code
         self.askbookDepth = askbookDepth
@@ -19,7 +19,8 @@ class Exchange():
         self.orderDepth = orderDepth
         # get all exchange pairs
         self.coinigyAPI = coinigyAPI
-
+        self.userOrderHandler = None
+        self.userTradeHandler = None
         self.fxPairs = coinigyAPI.getFxPairs(code) # get all pairs
 
         # subscribe for all pairs in this exchange

@@ -7,7 +7,7 @@ from collections import namedtuple
 # Coinigy full API (REST + WebSocket)
 class CoinigyAPI :
     def __init__(self, apiKey, apiSecret, reconnect=True, wsURL='wss://sc-02.coinigy.com/socketcluster/', restURL='https://api.coinigy.com/api/v1'):
-        self.logger = logging.getLogger('root')
+        self.logger = logging.getLogger('coinigy API')
         self.logger.disabled = True
         self.logger.debug("Initialize Coinigy API")
         # WEB SOCKET

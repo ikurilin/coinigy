@@ -20,7 +20,7 @@ coinigyAPI = CoinigyAPI(apiKey="acc223ec3b64d19d8aa060bde7af0cb1",
 okExchange = Exchange('GATE', 'GATECOIN',coinigyAPI) # , allowedPairs=["BTC/EUR", "BTC/HKD", "ETH/BTC", "ETH/EUR","PAY/ETH", "PAY/BTC", "WGC/ETH"]
 
 algo = PriceArbitrage(okExchange)
-algo.findArbitrageOpportunity2()
+#algo.findArbitrageOpportunity2()
 
 while (True) :
     pass
