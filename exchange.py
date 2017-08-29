@@ -110,7 +110,16 @@ class Exchange():
                     return c.getAverageBidPrice(1)
             elif  c.getQuote() == _from and c.getBase() == _to:
                 if _type == 'ASK':
-                    return 1/c.getAverageAskPrice(1)
+                    x = c.getAverageAskPrice(1)
+                    if x != 0:
+                        return 1/x
+                    else:
+                        return 0
                 else:
-                    return 1/c.getAverageBidPrice(1)
+                    x = c.getAverageBidPrice(1)
+                    if x != 0:
+                        return 1/x
+                    else:
+                        return 0
         raise # error
+

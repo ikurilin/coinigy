@@ -224,3 +224,64 @@ class FXPair():
     def getBidBookDepth(self):
         pass
 
+    # Get maximum convertible value in Quote currency
+    def getMaxBookQuote(self, bid = False): # in quote currency
+        if bid: book = self.bids
+        else: book = self.asks
+        if book is None or book.empty:
+            return 0
+
+        #q = book['quantity']
+        #p = book['price']
+        #qp = p*q
+        return (book['quantity']*book['price']).sum()
+
+    def getMaxBookBase(self, bid=False):
+        if bid: book = self.bids
+        else: book = self.asks
+        if book is None or book.empty:
+            return 0
+        return book['quantity'].sum()
+
+    # converts base currency to quote currency based on order book, caps amount by amt in the book
+    def limitedConvertBase2Qnt(self, baseAmt, useAsk = False):
+        bAmt = baseAmt
+        sum = 0
+        if useAsk:
+            row_iterator = self.asks.iterrows()
+        else:
+            row_iterator = self.bids.iterrows()
+        for index, row in row_iterator:
+            amt = min(bAmt, row['quantity'])
+            sum += amt * row['price']
+            bAmt -= amt
+            if bAmt == 0:
+                return sum
+
+        if bAmt == 0:
+            return sum
+        #elif bAmt > 0.1: raise
+        else: return sum
+
+    #convert given antAmt [quote currency] to base currency taking into account book depth
+    # converts quote currency to base currency based on order book, caps amount by amt in the book
+    def limitedConvertQnt2Base(self, qntAmt, useBid = False):
+        #Convert quote currerncy to base -> standard long operation, use ASK book
+        qAmt = qntAmt
+        sum = 0
+        if useBid:
+            row_iterator = self.bids.iterrows()
+        else:
+            row_iterator = self.asks.iterrows()
+
+        for index, row in row_iterator:
+            amt = min(qAmt, row['quantity'] * row['price'] )
+            sum += amt / row['price']
+            qAmt -= amt
+            if qAmt == 0:
+                return sum
+
+        if qAmt == 0:
+            return sum
+        #elif qAmt > 0.1: raise
+        else: return sum
