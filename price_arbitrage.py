@@ -268,6 +268,47 @@ class PriceArbitrage:
                 max_path = path
         return (max, max_path)
 
+
+        # recalculate arbitrage for a given pair
+
+    def estimateMaximumThroughOutput2(self, pair, longPath, shortPath):
+        # self.logger.info("------PAIR %s" % (pair.getPairCode()))
+        # maximum conversion path, default is long / ask
+        def estimateLongPathMaxThroughoutput(path, bid=False):
+            firstNode = path[0]  # first element
+            b = firstNode.getMaxBookQuote(bid)
+            # b = firstNode.limitedConvertQnt2Base(q, bid)
+            # (q,b) = (b,q) # swap
+            for p in path:
+                # q1 = min(p.getMaxBookQuote(bid), b)
+                b = p.limitedConvertQnt2Base(b, bid)
+                # b = b1
+                # q = q1
+            lastPair = path[len(path) - 1]
+            return (b, lastPair.getBase(), lastPair)  # in base currency of the final leaf
+
+        # Estimate short route, path is given from root to leaf
+        def estimateShortPathMaxThroughoutput(path, startBaseValue=None, ask=False):
+            firstNode = path[len(path) - 1]  # first element
+            if startBaseValue is None:
+                q = firstNode.getMaxBookBase(ask)
+            else:
+                q = startBaseValue
+            for p in reversed(path):
+                q = p.limitedConvertBase2Qnt(q, ask)
+
+            lastPair = path[0]
+            return (q, lastPair.getQuote(), lastPair)  # in base quote of the final leaf
+
+        #max = 0
+        #max_path = None
+        #for path in self.conversion_paths[pair]:
+        # first time estimate max throughoutput
+        a = estimateLongPathMaxThroughoutput(longPath, True)  # root -> leaf, use inverde mode (True) to get actual max initial value
+        b = estimateShortPathMaxThroughoutput(shortPath, a[0], True)  # leaf -> root
+        #initialMaxValue = b[0]  # maximum value possible to convert with current books state
+        return b[0]
+
     # recalculate arbitrage for a given pair
     def updateArbitrageDataForPair(self, pair):
         #self.logger.info("------PAIR %s" % (pair.getPairCode()))
@@ -353,8 +394,12 @@ class PriceArbitrage:
 
             firstPair = maxValue['long']['path'][0]  # first element should be first pair (zero/0 element is a fake "root" element)
             longVal = self.exchange.getExchangeRate('BTC', firstPair.getQuote(), 'ASK')
-            self.logger.info('Arbitrage value: %f BTC per 1 BTC cycle' % pair.arbitrage['val'])
-            max_arb = self.estimateMaximumThroughOutput2(pair, maxValue['long']['path'], maxValue['short']['path'])
+            max_arb_size = self.estimateMaximumThroughOutput2(pair, maxValue['long']['path'], maxValue['short']['path'])
+            ppp = maxValue['short']['path']
+            profit = pair.arbitrage['val'] * max_arb_size
+            currency = ppp[len(ppp)-1].getQuote()
+            self.logger.info('Arbitrage return: %f. Maximum size %f %s. Profit %f %s' % (pair.arbitrage['val'], max_arb_size,currency,profit, currency  ))
+
             pp =  unwrap_path(maxValue['long']['path'],longVal,maxValue['long']['path'][0]  )
             self.logger.info("LONG: %f %s : %s" % (pp[0], pair.getBase(), pp[1]))
             shortVal = pp[0]
