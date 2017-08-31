@@ -126,89 +126,16 @@ class PriceArbitrage:
         self.logger.info("-------FX pairs------------")
         self.logger.info(pairs)
 
-        #find opportunity
-        #self.findArbitrageOpportunity()
-
     # update algo for data change
     def updateTradeHandler(self, currencyPair):
         self.logger.info("Process trade update for pair %s" % (currencyPair.getPairCode()))
-        #self.findArbitrageOpportunity()
+
 
     def updateOrderHandler(self, currencyPair):
         self.logger.info("Process ORDER update for pair %s" % (currencyPair.getPairCode()))
         self.pairUpdateHandler(currencyPair)
 
-    def findArbitrageOpportunity(self):
-        # find spot arbitrage opportunity in the exchange
-        # calculate conversion value
-        # LONG position: from top to leaf
-
-        #ierate tree from root to the leaves to calculate terminal conversion rate in the leaves
-        def estimateRates(longVal, shortVal, root, longStr, shortStr):
-            r = root.getFXPair()
-            # rates reflect current order book status and amt to exchange
-
-            v1 = 0
-            ex_rate1 = r.getAverageAskPrice(longVal)  # at what price I can buy
-            if ex_rate1 != 0:
-                v1 = longVal / ex_rate1  # convert val to Node base currency
-            ex_rate2 = r.getAverageBidPrice(shortVal)  # at what price I can sell
-            v2 = shortVal * ex_rate2
-
-            # conversion line for debug purposes
-            s1 = longStr + "-> " + str(v1) + " " + r.getBase() + "@" + str(ex_rate1)
-            s2 = str(v2) + " " + r.getBase() + "@" +  str(ex_rate2) + "->" + shortStr
-
-            if root.is_leaf: # reached leaf - save accumulated long value
-                root.longValue = v1  # value of 1 BTC expressed in terms of base value of this currency (base)
-                root.longStr = s1
-                root.shortValue = v2 # value of 1 unit of this base currency expressed in terms of quote currency of the tree root
-                root.shortStr = s2
-            else:
-                for n in root.children:
-                    estimateRates(v1, v2, n, s1, s2)
-
-        # Combined LONG / SHORT LOOP: start with 1 BTC
-        root = self.tree.root # get root
-        for n in root.children:
-            pair = n.getFXPair()
-            x = self.exchange.getExchangeRate('BTC',pair.getQuote(), 'BID')
-            # x = pair.get1BTCinQuote()
-            # get value of 1 BTC expressed in quote currency of n
-            #ex_rate1 = pair.getAverageBidPrice(x) # use bid price here
-            #ex_rate2 = pair.getAverageAskPrice(1)
-            v1 = x  # 1 * ex_rate1 # long local currency worth of 1 BTC
-            v2 = 1  # short value
-            s1 = "1 BTC -> " + str(x) + " " + pair.getQuote()
-            s2 = pair.getBase()
-            estimateRates(v1, v2, n, s1, s2)
-        # print alternatives
-        # unwrap nested tuples
-        def unwrap(x):
-            if isinstance(x, tuple):
-                s = ""
-                for t in x:
-                    s += unwrap(t)
-                return s
-            else:
-                return x.name + " "
-
-        a = FXNode.m_samePairDifferentPathPool.keys()
-        w = Walker()
-        for k in FXNode.m_samePairDifferentPathPool.keys():
-            alternative_list = FXNode.m_samePairDifferentPathPool[k]
-            print("------PAIR %s" % (k.getPairCode()))
-            for c in alternative_list:
-                if not c.is_leaf:
-                    continue # iterate only leaves
-                path = w.walk(root, c)
-                print("LONG: %f : %s >> %s"  % (c.longValue, unwrap(path), c.longStr))
-                print("SHORT: %f : %s " % (c.shortValue,  c.shortStr))
-
-
-        print("FINISH")
-
-
+    # Handler to process data update of the pair
     def pairUpdateHandler(self, pair):
         nodes = FXNode.m_samePairDifferentPathPool[pair]
         list_to_update = []
@@ -219,59 +146,11 @@ class PriceArbitrage:
                 p = r.getFXPair()
                 if p in list_to_update: continue
                 list_to_update.append(p)
-                self.updateArbitrageDataForPair(p)
-
-    # recalculate arbitrage for a given pair
-    def estimateMaximumThroughOutput(self, pair):
-        # self.logger.info("------PAIR %s" % (pair.getPairCode()))
-        # maximum conversion path, default is long / ask
-        def estimateLongPathMaxThroughoutput(path, bid=False):
-            firstNode = path[0]  # first element
-            b = firstNode.getMaxBookQuote(bid)
-            #b = firstNode.limitedConvertQnt2Base(q, bid)
-            #(q,b) = (b,q) # swap
-            for p in path:
-                #q1 = min(p.getMaxBookQuote(bid), b)
-                b = p.limitedConvertQnt2Base(b, bid)
-                #b = b1
-                #q = q1
-            lastPair = path[len(path) - 1]
-            return (b, lastPair.getBase(), lastPair)  # in base currency of the final leaf
-
-        # Estimate short route, path is given from root to leaf
-        def estimateShortPathMaxThroughoutput(path, startBaseValue = None, ask=False):
-            firstNode = path[len(path) - 1]  # first element
-            if startBaseValue is None:
-                q = firstNode.getMaxBookBase(ask)
-            else:
-                q = startBaseValue
-            for p in reversed(path):
-                q = p.limitedConvertBase2Qnt(q, ask)
-
-            lastPair = path[0]
-            return (q, lastPair.getQuote(), lastPair)  # in base quote of the final leaf
-
-        max = 0
-        max_path= None
-        for path in self.conversion_paths[pair]:
-            # first time estimate max throughoutput
-            a = estimateLongPathMaxThroughoutput(path, True)  #root -> leaf, use inverde mode (True) to get actual max initial value
-            b = estimateShortPathMaxThroughoutput(path, a[0], True) # leaf -> root
-            initialMaxValue = b[0] # maximum value possible to convert with current books state
-            pair.maxInitialConversionValue = {}
-            pair.maxInitialConversionValue['long'] = a # in local currency
-            #ex = self.exchange.getExchangeRate(pair.getQuote(), 'BTC', 'ASK')
-            # convert initial value to btc
-            pair.maxInitialConversionValue['short'] = b # in btc
-            if initialMaxValue > max:
-                max = initialMaxValue
-                max_path = path
-        return (max, max_path)
+                self.calculateArbitrageDataForPair(p)
 
 
-        # recalculate arbitrage for a given pair
-
-    def estimateMaximumThroughOutput2(self, pair, longPath, shortPath):
+    # estimate maximum possible value of the arbitrage transaction
+    def estimateMaximumThroughOutput(self, pair, longPath, shortPath):
         # self.logger.info("------PAIR %s" % (pair.getPairCode()))
         # maximum conversion path, default is long / ask
         def estimateLongPathMaxThroughoutput(path, bid=False):
@@ -284,12 +163,12 @@ class PriceArbitrage:
                 b = p.limitedConvertQnt2Base(b, bid)
                 # b = b1
                 # q = q1
-            lastPair = path[len(path) - 1]
+            lastPair = path[ - 1]
             return (b, lastPair.getBase(), lastPair)  # in base currency of the final leaf
 
         # Estimate short route, path is given from root to leaf
         def estimateShortPathMaxThroughoutput(path, startBaseValue=None, ask=False):
-            firstNode = path[len(path) - 1]  # first element
+            firstNode = path[ - 1]  # first element
             if startBaseValue is None:
                 q = firstNode.getMaxBookBase(ask)
             else:
@@ -300,20 +179,14 @@ class PriceArbitrage:
             lastPair = path[0]
             return (q, lastPair.getQuote(), lastPair)  # in base quote of the final leaf
 
-        #max = 0
-        #max_path = None
-        #for path in self.conversion_paths[pair]:
         # first time estimate max throughoutput
-        a = estimateLongPathMaxThroughoutput(longPath, True)  # root -> leaf, use inverde mode (True) to get actual max initial value
-        b = estimateShortPathMaxThroughoutput(shortPath, a[0], True)  # leaf -> root
-        #initialMaxValue = b[0]  # maximum value possible to convert with current books state
-        return b[0]
+        a = estimateLongPathMaxThroughoutput(longPath, bid = False)  # root -> leaf, use inverse mode (True) to get actual max initial value
+        b = estimateShortPathMaxThroughoutput(shortPath, a[0], ask = False)  # leaf -> root
+        return b
 
     # recalculate arbitrage for a given pair
-    def updateArbitrageDataForPair(self, pair):
-        #self.logger.info("------PAIR %s" % (pair.getPairCode()))
-
-        maxValue = {
+    def calculateArbitrageDataForPair(self, pair):
+        arbitrageDescriptor = {
             "long" : {
                 "val" : 0,
                 "path": []
@@ -324,86 +197,102 @@ class PriceArbitrage:
                 "path" : []
             }
         }
-        a = self.conversion_paths.keys()
-        b = self.conversion_paths[pair]
         for path in self.conversion_paths[pair]:
             # calculate conversion rates: we begin with 1 BTC on long path and 1 unit of local currency on the short path
             # it is convenient arrangement to see percentage return
             firstPair = path[0]  # first element should be the first pair (zero/0 element is a fake "root" element)
             # start with value of 1 btc in local currency
-            longVal = self.exchange.getExchangeRate('BTC', firstPair.getQuote(), 'ASK') # use ASK for convenience
-            #s1 = "1 BTC -> " + str(longVal) + " " + firstPair.getQuote()
+            e = self.exchange.getExchangeRate('BTC', firstPair.getQuote(), 1,_bid = False)  # use ASK for algo initialization
+            if e != 0:
+                longVal = 1 / e
+            else:
+                continue # not data
             shortVal = 1
-            #s2 = " " + firstPair.getQuote()
-            leaf_base = ""
             for p in path: # iterate all leaves (each leaf is the same pair but different conversion path)
                 # estimate long value: quote -> base conversion which is considered long
-                ex_rate1 = p.getAverageAskPrice(longVal)  # at what price I can buy
+                ex_rate1 = p.getAverageAskPrice(longVal)  # at what price I can buy 1 unit of base currency
                 if ex_rate1 != 0:
-                    longVal = longVal / ex_rate1  # convert val to Node base currency
+                    longVal = longVal / ex_rate1  # convert quote currency to base currency
                 else:
-                    longVal = 0 # error - no book data
-                    #leaf_base = p.getBase()
-                #s1 = s1 + "-> " + str(longVal) + " " + p.getBase() + "@" + str(ex_rate1)
+                    continue # error - no book data
                 # estimate short value ( base -> quote)
-                ex_rate2 = p.getAverageBidPrice(shortVal)  # at what price I can sell
+                ex_rate2 = p.getAverageBidPrice(shortVal)  # at what price I can sell 1 unit of base currency and get quote curreny
+                if ex_rate2 == 0: continue # no data
                 shortVal = shortVal * ex_rate2
-                #s2 = str(shortVal) + " " + p.getBase() + "@" + str(ex_rate2) + "-> " +s2
             # keep track of max
-            # all longVal are expressed in terms of base / local currency of the pair, so we can campare them
-            if longVal > maxValue['long']['val']:
-                maxValue['long']['val'] = longVal
-                maxValue['long']['path'] = path
+            # all longVal are expressed in terms of base / local currency of the pair, so we can compare them
+            if longVal > arbitrageDescriptor['long']['val']:
+                arbitrageDescriptor['long']['val'] = longVal
+                arbitrageDescriptor['long']['path'] = path
             # on the other hand, all shortVal are expressed in terms of quote currency of the path root which are different
             # so we need to convert shortVal to btc in order to compare them
-            ex_rate3 = self.exchange.getExchangeRate(firstPair.getQuote(), 'BTC', 'BID') # buy btc
-            if shortVal * ex_rate3 > maxValue['short']['btc_val']:
-                maxValue['short']['btc_val'] = shortVal * ex_rate3
-                maxValue['short']['path'] = path
-                maxValue['short']['val'] = shortVal
+            ex_rate3 = self.exchange.getExchangeRate(firstPair.getQuote(), 'BTC', shortVal, _bid = False)  # buy btc
+            if ex_rate3 == 0: continue  # no data
+            shortVal_btc = shortVal / ex_rate3
+            if  shortVal_btc > arbitrageDescriptor['short']['btc_val']:
+                arbitrageDescriptor['short']['btc_val'] = shortVal_btc
+                arbitrageDescriptor['short']['path'] = path
+                arbitrageDescriptor['short']['val'] = shortVal
 
-        pair.arbitrage = {} # save arbitrage data
-        pair.arbitrage['val'] = maxValue['long']['val'] * maxValue['short']['btc_val'] - 1
-        # to remove
+        arbitrageDescriptor['arb_return'] = arbitrageDescriptor['long']['val'] * arbitrageDescriptor['short']['btc_val'] - 1
         #self.estimateMaximumThroughOutput(pair)
-        if pair.arbitrage['val'] > 0:
-            self.logger.info(" ****** ARBITRAGE FOR THE PAIR %s " % pair.getPairCode())
+        a = pair.getPairCode()
+        b = arbitrageDescriptor['arb_return']
+        self.logger.info("Arbitrage %s return: %f" % (a,b) )
+        if arbitrageDescriptor['arb_return'] > 0:
+            self.arbitrageHandler(pair, arbitrageDescriptor) # process arbitrage
 
-            def unwrap_path(_path, _val, firstPair, inverse = False):
-                path = _path
-                val = _val
-                if inverse:
-                    s = str(val) + " " + firstPair.getBase()
-                else:
-                    s =  str(val) + " " + firstPair.getQuote()
-                for p in path:
-                    if inverse :
-                        ex_rate = p.getAverageBidPrice(val)
-                        val = val * ex_rate
-                    else:
-                        ex_rate = p.getAverageAskPrice(val)  # at what price I can buy
-                        if ex_rate != 0:
-                            val = val / ex_rate  # convert val to Node base currency
-                        else:
-                            val = 0
-                    if inverse:
-                        s = s + "-> " + str(val) + " " + p.getQuote() + "@" + str(ex_rate)
-                    else:
-                        s = s + "-> " + str(val) + " " + p.getBase() + "@" + str(ex_rate)
-                return (val, s)
 
-            firstPair = maxValue['long']['path'][0]  # first element should be first pair (zero/0 element is a fake "root" element)
-            longVal = self.exchange.getExchangeRate('BTC', firstPair.getQuote(), 'ASK')
-            max_arb_size = self.estimateMaximumThroughOutput2(pair, maxValue['long']['path'], maxValue['short']['path'])
-            ppp = maxValue['short']['path']
-            profit = pair.arbitrage['val'] * max_arb_size
-            currency = ppp[len(ppp)-1].getQuote()
-            self.logger.info('Arbitrage return: %f. Maximum size %f %s. Profit %f %s' % (pair.arbitrage['val'], max_arb_size,currency,profit, currency  ))
+    # Process arbitrage event
+    def arbitrageHandler(self, pair, arbitrage):
+        print(" ****** ARBITRAGE FOR THE PAIR %s " % pair.getPairCode())
 
-            pp =  unwrap_path(maxValue['long']['path'],longVal,maxValue['long']['path'][0]  )
-            self.logger.info("LONG: %f %s : %s" % (pp[0], pair.getBase(), pp[1]))
-            shortVal = pp[0]
-            lp = maxValue['short']['path']
-            pp2 = unwrap_path(reversed(lp), shortVal, lp[len(lp)-1], True )
-            self.logger.info("SHORT: %f %s : %s" % (pp2[0], pair.getQuote(), pp2[1]))
-            b = 4
+        #firstPair = arbitrage['long']['path'][0]  # first element should be first pair (zero/0 element is a fake "root" element)
+        # Estimate maximum possible value of the transaction on long-short path (expressed in terms of the last node of short path)
+        (transaction_max_amt, arb_val_currency,x)  = self.estimateMaximumThroughOutput(pair, arbitrage['long']['path'], arbitrage['short']['path'])
+        arb_max_profit = arbitrage['arb_return'] * transaction_max_amt # max possible arbitrage value
+        #shortPath = arbitrage['short']['path']
+        #arb_val_currency = shortPath[len(shortPath) - 1].getQuote() # currency in which arbitrage value is expressed
+        # get btc value of arbitrage profit
+        arbitrage['max_transaction'] = {'val':  transaction_max_amt,
+                                        'currency' :  arb_val_currency }
+        arb_max_profit_btc = arb_max_profit / self.exchange.getExchangeRate(arb_val_currency, 'BTC', arb_max_profit, _bid = False)  # buy BTC
+        print('Arbitrage return: %f. Maximum transaction amt %f %s. Arbitrage profit %f %s (%f BTC)' % (arbitrage['arb_return']*,
+                                                                                        transaction_max_amt, arb_val_currency,
+                                                                                        arb_max_profit, arb_val_currency,
+                                                                                        arb_max_profit_btc  ))
+        self.debug_arbitrage(pair, arbitrage)
+
+    def debug_arbitrage(self, pair, arbitrage):
+        longPath = arbitrage['long']['path']
+        firstPair = longPath[0]  # first element should be the first pair (zero/0 element is a fake "root" element)
+        # start with value of 1 btc in local currency
+        longVal = arbitrage['max_transaction']['val'] / self.exchange.getExchangeRate(arbitrage['max_transaction']['currency'], firstPair.getQuote(), arbitrage['max_transaction']['val'], _bid=False)  # use ASK for algo initialization/
+        s= ""
+        for p in longPath:
+            l = longVal
+            e = p.getAverageAskPrice(longVal)
+            s = str(longVal) + " " + p.getQuote() + " -> "
+            longVal = longVal / e
+            s += str(longVal) + " " + p.getBase() + "@" + str(e)
+            print(s)
+            print("Ask book: AverageAskPrie(%f)=%f" % (l, e))
+            print(p.asks)
+
+        shortPath = arbitrage['short']['path']
+        print("**** SHORTING:")
+        shortVal = longVal
+        firstPair = shortPath[- 1]
+        for index, p in enumerate(reversed(shortPath)):
+            k = shortVal
+            e = p.getAverageBidPrice(shortVal)
+            s = str(shortVal) + " " + p.getBase() + " -> "
+            shortVal = shortVal * e
+            s += str(shortVal) + " " + p.getQuote() + "@" + str(e)
+            print(s)
+            print("Bid book: AverageBidPrie(%f)=%f" % (k, e))
+            print(p.bids)
+        e = self.exchange.getExchangeRate(firstPair.getQuote(), 'BTC', shortVal, _bid=False)  # buy btc
+        shortVal_btc = shortVal / e
+        print(str(shortVal) + " " + firstPair.getQuote()+ "->" + str(shortVal_btc) + " BTC@" + str(e) )
+        a = 5

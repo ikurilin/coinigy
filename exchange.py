@@ -96,30 +96,26 @@ class Exchange():
     def orderHandler(self, updatedPair):
         if self.userOrderHandler is not None: self.userOrderHandler(updatedPair) # call user call back
 
-    # convert currency
-    def getExchangeRate(self, _from, _to, _type='ASK'):
+    # Get exchange rate taking into account book status
+    def getExchangeRate(self, _from, _to, amt, _bid=False):
         if _from == _to:
             return 1
 
         for  index, row in self.fxPairs.iterrows():
             c = row['pair_obj']
-            if c.getQuote() == _to and c.getBase() == _from:
-                if _type == 'ASK':
-                    return c.getAverageAskPrice(1)
+            if c.getQuote() == _to and c.getBase() == _from: # inversion
+                if _bid:
+                    x = c.getAverageBidPrice(amt)
                 else:
-                    return c.getAverageBidPrice(1)
+                    x= c.getAverageAskPrice(amt)
+                if x == 0:
+                    return 0
+                else: return 1/x
             elif  c.getQuote() == _from and c.getBase() == _to:
-                if _type == 'ASK':
-                    x = c.getAverageAskPrice(1)
-                    if x != 0:
-                        return 1/x
-                    else:
-                        return 0
+                if not _bid:
+                    return c.getAverageAskPrice(amt)
                 else:
-                    x = c.getAverageBidPrice(1)
-                    if x != 0:
-                        return 1/x
-                    else:
-                        return 0
+                    return c.getAverageBidPrice(amt)
+
         raise # error
 
