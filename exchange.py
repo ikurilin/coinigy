@@ -96,7 +96,7 @@ class Exchange():
     def orderHandler(self, updatedPair):
         if self.userOrderHandler is not None: self.userOrderHandler(updatedPair) # call user call back
 
-    # Get exchange rate taking into account book status
+    # Get exchange rate taking into account book prices
     def getExchangeRate(self, _from, _to, amt, _bid=False):
         if _from == _to:
             return 1
@@ -104,18 +104,11 @@ class Exchange():
         for  index, row in self.fxPairs.iterrows():
             c = row['pair_obj']
             if c.getQuote() == _to and c.getBase() == _from: # inversion
-                if _bid:
-                    x = c.getAverageBidPrice(amt)
-                else:
-                    x= c.getAverageAskPrice(amt)
-                if x == 0:
-                    return 0
-                else: return 1/x
+                x = c.getAverageBidPrice(amt) if _bid else c.getAverageAskPrice(amt)
+                return 0 if x == 0 else 1 / x
             elif  c.getQuote() == _from and c.getBase() == _to:
-                if not _bid:
-                    return c.getAverageAskPrice(amt)
-                else:
-                    return c.getAverageBidPrice(amt)
-
-        raise # error
+                x = c.getAverageBidPrice(amt) if _bid else c.getAverageAskPrice(amt)
+                return 0 if x == 0 else 1 / x
+        # no pair found
+        raise Exception("Can't find pair to convert " + _from + " -> " + _to)
 

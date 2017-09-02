@@ -148,23 +148,22 @@ class FXPair():
     def addTradingHistory(self, trades):
         pass
 
-    def getAverageAskPrice(self, _amt):
-        self.logger.info("Get average ASK price for %d  %s" % (_amt, self.getPairCode()))
+    def getAverageAskPrice(self, quoteAmt):
+        '''
+        Get the average ask book price for the given amt in quote currency
+        BIDS DATAFRAME FORMAR
+        INFO:  exchange       label       price         quantity            timestamp        total
+        0     GATE          BTC/HKD     33951.1000       0.380      2017-08-25 12:54:38     12901.41800
+        1     GATE          BTC/HKD     33951.0000       0.300      2017-08-25 12:54:38     10185.30000
+        :param amt:
+        :return:
+        '''
+        self.logger.info("Get average ASK price for %d  %s" % (quoteAmt, self.getPairCode()))
         #self.logger.info(self.asks)
         if not self.isAskAvailable():
-            #self.logger.info(self)
-            if not self.getPairCode() in self.orderForceRequestInitiated:
-                # initiate forced data request
-                self.orderForceRequestInitiated.append(self.getPairCode()) # force request only once
-                #self.requestAskBook() # request new data
-                self.requestOrderBook()
-                if not self.isAskAvailable():
-                    self.logger.debug("ASK info is not available for %s " % self.getPairCode())
-                    #raise # no ask information yet available
-                    return 0 # no price available
-            else: return 0 # force request was alredy issued but still there is no data
+            return 0 # no price available
         # find how deep need to go to fulfill required qnt
-        amt = _amt
+        amt = quoteAmt
         qnt = 0
         sum = 0
         for index, row in self.asks.iterrows():
@@ -177,23 +176,9 @@ class FXPair():
         p = sum / qnt
         return p
 
-
-        a = (self.asks['quantity'] * self.asks['price'])
-        b = a.cumsum() <= amt # boolean vector - True : this price will be used
-        b[b == False].ix[0] = True
-        #a[0] = True # don't skip first row (when can fulfill the order from the first row)
-        # calculate average price for the given qnt
-        n = (self.asks["quantity"] * self.asks["price"])[a]
-        n = n.sum()
-        d = self.asks["quantity"][a]
-        d = d.sum()
-        p = n / d
-        return p
-
-
-    def getAverageBidPrice(self, _amt):
+    def getAverageBidPrice(self, baseAmt):
         '''
-        Get the average price for the given qnt
+        Get the average bid book price for the given amt in base currency
         BIDS DATAFRAME FORMAR
         INFO:  exchange       label       price         quantity            timestamp        total
         0     GATE          BTC/HKD     33951.1000       0.380      2017-08-25 12:54:38     12901.41800
@@ -201,46 +186,47 @@ class FXPair():
         :param amt:
         :return:
         '''
-        self.logger.info("Get average BID price for %d %s" % (_amt, self.getPairCode()))
+        self.logger.info("Get average BID price for %d %s" % (baseAmt, self.getPairCode()))
         #self.logger.info(self.bids)
         if not self.isBidAvailable():
-            self.logger.info("@@ Manual Bid book request for %s" % self.getPairCode())
-            if not self.getPairCode() in self.orderForceRequestInitiated:
-                # initiate forced data request
-                self.orderForceRequestInitiated.append( self.getPairCode()) # add record
-                #self.requestBidBook()
-                self.requestOrderBook()
-                if not self.isBidAvailable():
-                    self.logger.debug("BID info is not available for %s " % self.getPairCode())
-                    #raise # no bid information yet available
-                    return 0 # no price available
-            else: return 0 # forced request was sent but still there is no data
-        amt = _amt
+           return 0 #  no data
+        amt = baseAmt
         qnt = 0
         sum = 0
         for index, row in self.bids.iterrows():
-            bQnt = min(amt / row['price'], row['quantity'])
+            bQnt = min(amt, row['quantity'])
             sum += bQnt * row['price']
-            amt -= bQnt * row['price']
+            amt -= bQnt
             qnt += bQnt
             if amt == 0:
                 break
         p = sum / qnt
         return p
 
-        # find how deep need to go to fulfill required qnt * self.bids['price']
-        #a = (self.bids['quantity'] ).cumsum() <= amt # boolean vector - True : this price will be used
-        #a[0] = True # don't skip first row (when can fulfill the order from the first row)
-        # calculate average price for the given qnt
-        #p = (((self.bids["quantity"]*self.bids["price"])[a]).cumsum() / (self.bids["quantity"][a]).cumsum())[0]
-        #return p
 
     #is bid price available?
     def isBidAvailable(self):
-        return not self.bids.empty
+        if not self.bids.empty:
+            return True
+        # try to request missing data
+        if  self.getPairCode() in self.orderForceRequestInitiated:
+            return False # no data
+        # initiate forced data request
+        self.orderForceRequestInitiated.append(self.getPairCode())  # add record
+        self.requestOrderBook()
+        return not self.isBidAvailable()
 
     #is ask price available?
     def isAskAvailable(self):
+        # self.logger.info(self)
+        if not self.asks.empty:
+            return True
+        # try to request missing data
+        if self.getPairCode() in self.orderForceRequestInitiated:
+            return False  # no data available
+        # initiate forced data request
+        self.orderForceRequestInitiated.append(self.getPairCode())  # force request only once
+        self.requestOrderBook()
         return not self.asks.empty
 
     # synonym names
@@ -261,78 +247,61 @@ class FXPair():
     def getBidBookDepth(self):
         pass
 
-    # Get maximum convertible value in Quote currency
-    def getMaxBookQuote(self, bid = False): # in quote currency
-        if bid: book = self.bids
-        else: book = self.asks
+    # Get book depth in Quote currency
+    def getMaxBookQuote(self, _bid = False): # in quote currency
+        book = self.bids if _bid else self.asks
 
-        if book is None or book.empty:
-            self.requestOrderBook()
-
-        if book is None or book.empty:
-            return 0
-
-        #q = book['quantity']
-        #p = book['price']
-        #qp = p*q
+        if (_bid and not self.isBidAvailable()) or \
+            (not _bid and self.isAskAvailable()):
+            return 0 # no data
         return (book['quantity']*book['price']).sum()
 
-    def getMaxBookBase(self, bid=False):
-        if bid: book = self.bids
-        else: book = self.asks
+    # Get book depth in Base currency
+    def getMaxBookBase(self, _bid=False):
+        book = self.bids if _bid else self.asks
 
-        if book is None or book.empty:
-            self.requestOrderBook()
-        if book is None or book.empty: return 0
-        else: return book['quantity'].sum()
+        if (_bid and not self.isBidAvailable()) or \
+                (not _bid and not self.isAskAvailable()):
+            return 0 # no data
+
+        return book['quantity'].sum()
 
     # converts base currency to quote currency based on order book, caps amount by amt in the book
     def limitedConvertBase2Qnt(self, baseAmt, useAsk = False):
         bAmt = baseAmt
         sum = 0
-        if useAsk:
-            if not self.isAskAvailable():
-                self.requestAskBook()
-            row_iterator = self.asks.iterrows()
-        else:
-            if not self.isBidAvailable():
-                self.requestBidBook()
-            row_iterator = self.bids.iterrows()
-        for index, row in row_iterator:
+
+        book = self.asks if useAsk else self.bids
+        if (useAsk and not self.isAskAvailable()) or \
+                (not useAsk and not self.isBidAvailable()):
+            return 0 # no data
+
+        # iterate book
+        for index, row in book.iterrows():
             amt = min(bAmt, row['quantity'])
             sum += amt * row['price']
             bAmt -= amt
             if bAmt == 0:
-                return sum
+                break
 
-        if bAmt == 0:
-            return sum
-        #elif bAmt > 0.1: raise
-        else: return sum
+        return sum
 
-    #convert given antAmt [quote currency] to base currency taking into account book depth
-    # converts quote currency to base currency based on order book, caps amount by amt in the book
+    # converts quote currency to base currency based on order book, caps amount by available amt in the book
     def limitedConvertQnt2Base(self, qntAmt, useBid = False):
         #Convert quote currerncy to base -> standard long operation, use ASK book
         qAmt = qntAmt
         sum = 0
-        if useBid:
-            if not self.isBidAvailable():
-                self.requestBidBook()
-            row_iterator = self.bids.iterrows()
-        else:
-            if not self.isAskAvailable():
-                self.requestAskBook()
-            row_iterator = self.asks.iterrows()
 
-        for index, row in row_iterator:
+        book = self.bids if useBid else self.asks
+        if (useBid and not self.isBidAvailable()) or \
+                (not useBid and not self.isAskAvailable()):
+            return 0 # no data
+
+        for index, row in book.iterrows():
             amt = min(qAmt, row['quantity'] * row['price'] )
             sum += amt / row['price']
             qAmt -= amt
             if qAmt == 0:
-                return sum
+                break
 
-        if qAmt == 0:
-            return sum
-        #elif qAmt > 0.1: raise
-        else: return sum
+        return sum
