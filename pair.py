@@ -148,61 +148,61 @@ class FXPair():
     def addTradingHistory(self, trades):
         pass
 
-    def getAverageAskPrice(self, quoteAmt):
-        '''
-        Get the average ask book price for the given amt in quote currency
-        BIDS DATAFRAME FORMAR
-        INFO:  exchange       label       price         quantity            timestamp        total
-        0     GATE          BTC/HKD     33951.1000       0.380      2017-08-25 12:54:38     12901.41800
-        1     GATE          BTC/HKD     33951.0000       0.300      2017-08-25 12:54:38     10185.30000
-        :param amt:
-        :return:
-        '''
-        self.logger.info("Get average ASK price for %d  %s" % (quoteAmt, self.getPairCode()))
-        #self.logger.info(self.asks)
+    # get average price (quote currency) for given amount in quote currency
+    def get_average_ask_price_for_quote_amt(self, quoteAmt):
         if not self.isAskAvailable():
             return 0 # no price available
         # find how deep need to go to fulfill required qnt
+
+        return float(self.__get_average_price_for_quote_amt(self.asks, quoteAmt))
+
+    # internal function to get average price for given quote amt for a given book
+    def __get_average_price_for_quote_amt(self, book, quoteAmt):
         amt = quoteAmt
         qnt = 0
         sum = 0
-        for index, row in self.asks.iterrows():
-            bQnt = min(amt / row['price'], row['quantity'] )
-            sum += bQnt * row['price']
-            amt -= bQnt * row['price']
-            qnt += bQnt
+        for index, row in book.iterrows():
+            bAmt = min(amt, row['quantity'] * row['price'] )
+            sum += bAmt #* row['price']
+            amt -= bAmt # * row['price']
+            qnt += bAmt / row['price']
             if amt == 0:
                 break
-        p = sum / qnt
-        return p
+        #p = sum / qnt
+        return 0 if qnt == 0 else sum / qnt
 
-    def getAverageBidPrice(self, baseAmt):
-        '''
-        Get the average bid book price for the given amt in base currency
-        BIDS DATAFRAME FORMAR
-        INFO:  exchange       label       price         quantity            timestamp        total
-        0     GATE          BTC/HKD     33951.1000       0.380      2017-08-25 12:54:38     12901.41800
-        1     GATE          BTC/HKD     33951.0000       0.300      2017-08-25 12:54:38     10185.30000
-        :param amt:
-        :return:
-        '''
-        self.logger.info("Get average BID price for %d %s" % (baseAmt, self.getPairCode()))
-        #self.logger.info(self.bids)
-        if not self.isBidAvailable():
-           return 0 #  no data
-        amt = baseAmt
+    # get average price for given amount in quote currency
+    def __get_average_price_for_base_amt(self, book, baseAmt):
+        qqnt = baseAmt
         qnt = 0
         sum = 0
-        for index, row in self.bids.iterrows():
-            bQnt = min(amt, row['quantity'])
+        for index, row in book.iterrows():
+            bQnt = min(qqnt, row['quantity'])
             sum += bQnt * row['price']
-            amt -= bQnt
-            qnt += bQnt
-            if amt == 0:
+            qqnt -= bQnt  # * row['price']
+            qnt += bQnt  # / row['price']
+            if qqnt == 0:
                 break
-        p = sum / qnt
-        return p
+        #p = sum / qnt
+        return 0 if qnt == 0 else sum / qnt
 
+    # get average price (in quote currency) for given amount in quote currency
+    def get_average_ask_price_for_base_amt(self, baseAmt):
+        if not self.isAskAvailable():
+            return 0 # no price available
+        return float(self.__get_average_price_for_base_amt(self.asks, baseAmt))
+
+    # Get the average bid book price ( in quote currency) for the given amt in base currency
+    def get_average_bid_price_for_base_amt(self, baseAmt):
+        if not self.isBidAvailable():
+           return 0 #  no data
+        return float(self.__get_average_price_for_base_amt(self.bids, baseAmt))
+
+    # Get the average bid book price (in quote currency) for the given amt in base currency
+    def get_average_bid_price_for_quote_amt(self, quoteAmt):
+        if not self.isBidAvailable():
+            return 0  # no data
+        return float(self.__get_average_price_for_quote_amt(self.bids, quoteAmt))
 
     #is bid price available?
     def isBidAvailable(self):
@@ -214,7 +214,7 @@ class FXPair():
         # initiate forced data request
         self.orderForceRequestInitiated.append(self.getPairCode())  # add record
         self.requestOrderBook()
-        return not self.isBidAvailable()
+        return not self.bids.empty
 
     #is ask price available?
     def isAskAvailable(self):
@@ -252,7 +252,7 @@ class FXPair():
         book = self.bids if _bid else self.asks
 
         if (_bid and not self.isBidAvailable()) or \
-            (not _bid and self.isAskAvailable()):
+            (not _bid and not self.isAskAvailable()):
             return 0 # no data
         return (book['quantity']*book['price']).sum()
 
