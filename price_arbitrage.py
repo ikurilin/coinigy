@@ -184,19 +184,26 @@ class PriceArbitrage:
         }
         for path in self.conversion_paths[pair]:
             for p in path: # iterate all leaves (each leaf is the same pair but different conversion path)
-                longMaxVal = self.estimateLongPathMaxThroughoutput(p)
-                long_ret = longMaxVal[0] / longMaxVal[2] # normalize
+                #long leg
+                longMaxVal = self.estimateLongPathMaxThroughoutput(p) # estimate max value
+                startLongValue = self.exchange.convert_amt(longMaxVal[1], path[0].getQuote(), longMaxVal[0])
+                longVal = self.estimateLongPathMaxThroughoutput(p, startLongValue / 2) # put through half of the max possible value
+                long_ret = longVal[0] / longVal[2] # normalize
                 if long_ret > arbitrageDescriptor['long']['return']:
                     arbitrageDescriptor['long']['return'] = long_ret
                     arbitrageDescriptor['long']['path'] = path
+                # short leg
                 shortMaxVal = self.estimateShortPathMaxThroughoutput(p)
-                short_ret = shortMaxVal[0] / shortMaxVal [2] # normalize
+                startShortValue = self.exchange.convert_amt(shortMaxVal[1], path[-1].getBase(), shortMaxVal[0])
+                shortVal = self.estimateShortPathMaxThroughoutput(p, startShortValue / 2)
+                short_ret = shortVal[0] / shortVal [2] # normalize
                 if short_ret > arbitrageDescriptor['short']['return']:
                     arbitrageDescriptor['short']['return'] = short_ret
                     arbitrageDescriptor['short']['path'] = path
-            ret = arbitrageDescriptor['long']['return'] * arbitrageDescriptor['short']['return']
-            if ret > 0:
-                pass # arbitrage opportunity
+        ret = arbitrageDescriptor['long']['return'] * arbitrageDescriptor['short']['return']
+        self.logger.info("Arbitrage %s return: %.2f" % (pair.getPairCode(), ret))
+        if ret > 0:
+            pass # arbitrage opportunity
 
 
     # recalculate arbitrage for a given pair
