@@ -249,20 +249,20 @@ class FXPair():
 
     # Get book depth in Quote currency
     def getMaxBookQuote(self, _bid = False): # in quote currency
-        book = self.bids if _bid else self.asks
-
         if (_bid and not self.isBidAvailable()) or \
             (not _bid and not self.isAskAvailable()):
             return 0 # no data
+
+        book = self.bids if _bid else self.asks
         return (book['quantity']*book['price']).sum()
 
     # Get book depth in Base currency
     def getMaxBookBase(self, _bid=False):
-        book = self.bids if _bid else self.asks
-
         if (_bid and not self.isBidAvailable()) or \
                 (not _bid and not self.isAskAvailable()):
             return 0 # no data
+
+        book = self.bids if _bid else self.asks
 
         return book['quantity'].sum()
 
@@ -271,10 +271,11 @@ class FXPair():
         bAmt = baseAmt
         sum = 0
 
-        book = self.asks if useAsk else self.bids
         if (useAsk and not self.isAskAvailable()) or \
                 (not useAsk and not self.isBidAvailable()):
             return 0 # no data
+
+        book = self.asks if useAsk else self.bids
 
         # iterate book
         for index, row in book.iterrows():
@@ -292,12 +293,13 @@ class FXPair():
         qAmt = qntAmt
         sum = 0
 
-        book = self.bids if useBid else self.asks
         if (useBid and not self.isBidAvailable()) or \
                 (not useBid and not self.isAskAvailable()):
             return 0 # no data
 
-        for index, row in book.iterrows():
+        #book = self.bids if useBid else self.asks
+
+        for index, row in self.bids.iterrows() if useBid else self.asks.iterrows():
             amt = min(qAmt, row['quantity'] * row['price'] )
             sum += amt / row['price']
             qAmt -= amt

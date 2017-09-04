@@ -153,7 +153,13 @@ class PriceArbitrage:
         for p in path:
             b = p.limitedConvertQnt2Base(b, bid)
         lastPair = path[- 1]
-        return (b, lastPair.getBase(), startValue)  # in base currency of the final leaf
+        res = {
+            'result_val': b,
+            'result_currency': lastPair.getBase(),
+            'start_val': startValue,
+            'start_currency': path[0].getQuote()
+        }
+        return res #(b, lastPair.getBase(), startValue)  # in base currency of the final leaf
 
     # Estimate short route, path is given from root to leaf
     def estimateShortPathMaxThroughoutput(self, path, startBaseValue = None, ask=False):
@@ -162,13 +168,19 @@ class PriceArbitrage:
         for p in reversed(path):
             q = p.limitedConvertBase2Qnt(q, ask)
         lastPair = path[0]  # reverse order
-        return (q, lastPair.getQuote(), startValue)  # in base quote of the final leaf
+        res = {
+            'result_val' : q,
+            'result_currency' : lastPair.getQuote(),
+            'start_val' : startValue,
+            'start_currency' : path[-1].getBase()
+         }
+        return res #(q, lastPair.getQuote(), startValue)  # in base quote of the final leaf
 
     # estimate maximum possible value of the arbitrage transaction
     def estimateMaximumThroughOutput(self, pair, longPath, shortPath):
         # first time estimate max throughoutput
         a = self.estimateLongPathMaxThroughoutput(longPath, bid = False)  # root -> leaf, use inverse mode (True) to get actual max initial value
-        b = self.estimateShortPathMaxThroughoutput(shortPath, a[0], ask = False)  # leaf -> root
+        b = self.estimateShortPathMaxThroughoutput(shortPath, a['result_val'], ask = False)  # leaf -> root
         return b
 
     def checkArbitrageOpportunity(self, pair):
@@ -183,31 +195,52 @@ class PriceArbitrage:
             }
         }
         for path in self.conversion_paths[pair]:
-            for p in path: # iterate all leaves (each leaf is the same pair but different conversion path)
-                #long leg
-                longMaxVal = self.estimateLongPathMaxThroughoutput(p) # estimate max value
-                startLongValue = self.exchange.convert_amt(longMaxVal[1], path[0].getQuote(), longMaxVal[0])
-                longVal = self.estimateLongPathMaxThroughoutput(p, startLongValue / 2) # put through half of the max possible value
-                long_ret = longVal[0] / longVal[2] # normalize
-                if long_ret > arbitrageDescriptor['long']['return']:
-                    arbitrageDescriptor['long']['return'] = long_ret
-                    arbitrageDescriptor['long']['path'] = path
-                # short leg
-                shortMaxVal = self.estimateShortPathMaxThroughoutput(p)
-                startShortValue = self.exchange.convert_amt(shortMaxVal[1], path[-1].getBase(), shortMaxVal[0])
-                shortVal = self.estimateShortPathMaxThroughoutput(p, startShortValue / 2)
-                short_ret = shortVal[0] / shortVal [2] # normalize
-                if short_ret > arbitrageDescriptor['short']['return']:
-                    arbitrageDescriptor['short']['return'] = short_ret
-                    arbitrageDescriptor['short']['path'] = path
-        ret = arbitrageDescriptor['long']['return'] * arbitrageDescriptor['short']['return']
-        self.logger.info("Arbitrage %s return: %.2f" % (pair.getPairCode(), ret))
+            #for p in path: # iterate all leaves (each leaf is the same pair but different conversion path)
+            #long leg
+            longMaxVal = self.estimateLongPathMaxThroughoutput(path) # estimate max value
+            if longMaxVal['result_val'] == 0:
+                continue
+            # convert half (to make sure it goes through) of the max value into original currency using ask book
+            s = self.estimateShortPathMaxThroughoutput(path, longMaxVal['result_val'] / 2, ask = True)
+            #startLongValue = s ['result_val']
+            #longVal = self.estimateLongPathMaxThroughoutput(path, startLongValue) # put through half of the max possible value
+            #long_ret = longVal['result_val'] / longVal['start_val'] # normalize: 1 Quote currency -> x Base currency, then x is a
+            if s['result_val'] == 0:
+                continue
+            long_ret = s['start_val'] / s['result_val']
+            ex = self.exchange.convert_amt(longMaxVal['start_currency'], 'BTC', 1.0)
+            if ex == 0:
+                self.logger.info('cant conver from %s to BTC' % longMaxVal['start_currency'] )
+                continue
+            long_ret /= ex # 1 btc - > xx base currency, so all conversions start with 1 btc and thus we can compare then
+            if long_ret > arbitrageDescriptor['long']['return']:
+                arbitrageDescriptor['long']['return'] = long_ret
+                arbitrageDescriptor['long']['path'] = path
+            # short leg
+            shortMaxVal = self.estimateShortPathMaxThroughoutput(path)
+            if shortMaxVal['result_val'] == 0:
+                continue
+            # convert hald of the max value into the original currency
+            s1 = self.estimateLongPathMaxThroughoutput(path, shortMaxVal['result_val'] / 2, bid = True)
+            #startShortValue = self.exchange.convert_amt(shortMaxVal[1], path[-1].getBase(), shortMaxVal[0])
+            #startShortValue = s['result_val']
+            #shortVal = self.estimateShortPathMaxThroughoutput(path, startShortValue)
+            #short_ret = self.exchange.convert_amt(shortVal['result_currency'], 'BTC', shortVal['result_val'])
+            #short_ret = shortVal['result_val'] / shortVal ['start_val'] # normalize
+            short_ret = s1['start_val'] / s1['result_val']
+            short_ret = self.exchange.convert_amt(s1['start_currency'],'BTC', short_ret)
+            if short_ret > arbitrageDescriptor['short']['return']:
+                arbitrageDescriptor['short']['return'] = short_ret
+                arbitrageDescriptor['short']['path'] = path
+        # calculate arbitrage return
+        ret = arbitrageDescriptor['long']['return'] * arbitrageDescriptor['short']['return'] - 1
+        print("Arbitrage %s return: %.2f" % (pair.getPairCode(), ret))
         if ret > 0:
-            pass # arbitrage opportunity
+            a= 5 # arbitrage opportunity
 
 
     # recalculate arbitrage for a given pair
-    def checkArbitrageOpportunity_wrong(self, pair):
+    def checkArbitrageOpportunity_old(self, pair):
         arbitrageDescriptor = {
             "long" : {
                 "val" : 0,
