@@ -55,7 +55,7 @@ class FileReaderAPI:
 
             if self.inputData.iloc[start_row]['base'] == row['base'] and \
                             self.inputData.iloc[start_row]['quote'] == row['quote'] and \
-                            self.inputData.iloc[start_row]['ordertype'] == row['ordertype'] and \
+                            self.inputData.iloc[start_row]['verb'] == row['verb'] and \
                             i != (len(self.inputData) - 1) :
                 continue
             # we got block from start_row to i
@@ -76,7 +76,7 @@ class FileReaderAPI:
         handler(channel, json)
 
 
-file_name = "sample.json"
+file_name = "pay-eth-arbitrage.json"
 apiSimulation = FileReaderAPI(file_name)
 testExchange = Exchange('TST','TEST-INTERFACE', apiSimulation)
 algo = PriceArbitrage(testExchange)

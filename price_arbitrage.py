@@ -6,17 +6,17 @@ from pair import FXPair
 from  order_manager import Order, OrderManager
 
 class FXNode(NodeMixin):
-    m_samePairDifferentPathPool = {} # pool of leaves with the same pairs
+    treeNodesWithSamePair = {} # pool of leaves with the same pairs
     def __init__(self, name, fxPair = None, parent = None):
         self.name = name
         self.fxPair = fxPair
         self.parent = parent
         # keep track of all alternatives
         if fxPair is not None:
-            if fxPair not in FXNode.m_samePairDifferentPathPool.keys():
-                FXNode.m_samePairDifferentPathPool[fxPair] = [self] # add first element
+            if fxPair not in FXNode.treeNodesWithSamePair.keys():
+                FXNode.treeNodesWithSamePair[fxPair] = [self] # add first element
             else:
-                FXNode.m_samePairDifferentPathPool[fxPair].append(self)
+                FXNode.treeNodesWithSamePair[fxPair].append(self)
 
 
     def getFXPair(self):
@@ -66,8 +66,8 @@ class PriceArbitrage:
 
         self.conversion_paths = {} # all conversion paths for the pair <pair: [pair1, pair2...]>
         # build list of all conversion paths
-        for k in FXNode.m_samePairDifferentPathPool.keys():  # iterate all pairs
-            alternative_list = FXNode.m_samePairDifferentPathPool[k]  # get list of leaves representing same pair but with different conversion path
+        for k in FXNode.treeNodesWithSamePair.keys():  # iterate all pairs
+            alternative_list = FXNode.treeNodesWithSamePair[k]  # get list of leaves representing same pair but with different conversion path
             paths = []
             for c in alternative_list:  # iterate all leaves (same pair but different paths)
                 if not c.is_leaf:
@@ -134,7 +134,7 @@ class PriceArbitrage:
 
     def updateOrderHandler(self, pair):
         self.logger.info("Process ORDER update for pair %s" % (pair.getPairCode()))
-        nodes = FXNode.m_samePairDifferentPathPool[pair]
+        nodes = FXNode.treeNodesWithSamePair[pair]
         visited_leaves = []
         # check all paths (terminal leaves) which include this pair
         for n in nodes:
@@ -146,7 +146,7 @@ class PriceArbitrage:
                 visited_leaves.append(p)
                 if not self.is_book_data_available_in_the_tree(r):
                     continue
-                self.checkArbitrageOpportunity(p)
+                self.checkArbitrageOpportunity(p, pair)
 
     # check if book data is available for all nodes in the route to this node
     def is_book_data_available_in_the_tree(self, node):
@@ -189,7 +189,16 @@ class PriceArbitrage:
         b = self.estimateShortPathMaxThroughoutput(shortPath, a['result_val'], ask = False)  # leaf -> root
         return b
 
-    def checkArbitrageOpportunity(self, pair):
+    # Check if bid and ask data is available for all pairs in the path
+    def bookDataAvailableInPath(self, path):
+        a = True
+        for x in path:
+            a = a and x.isBidAvailable() and x.isAskAvailable()
+            if not a:
+                break
+        return a
+
+    def checkArbitrageOpportunity(self, pair, updatedPair):
         arbitrageDescriptor = {
             "long" : {
                 "return" : 0.0,
@@ -213,6 +222,8 @@ class PriceArbitrage:
         for path in self.conversion_paths[pair]:
             #for p in path: # iterate all leaves (each leaf is the same pair but different conversion path)
             #long leg
+            if not updatedPair in path or not self.bookDataAvailableInPath(path):
+                continue
             longMaxVal = self.estimateLongPathMaxThroughoutput(path) # estimate max value
             if longMaxVal['result_val'] == 0:
                 continue
@@ -257,11 +268,13 @@ class PriceArbitrage:
                 arbitrageDescriptor['short']['s2'] = s1
         # calculate arbitrage return
         ret = arbitrageDescriptor['long']['return'] * arbitrageDescriptor['short']['return'] - 1
+        if ret == - 1:
+            return
         print("Arbitrage %s return: %.4f" % (pair.getPairCode(), ret))
         if ret > 0:
             curr = arbitrageDescriptor['max_transaction']['currency']
             currVal = arbitrageDescriptor['max_transaction']['val'] * ret
-            btc = self.exchange.convert_amt(curr,'BTC', currVal)
+            btc = 0 #self.exchange.convert_amt(curr,'BTC', currVal)
             print('**** ARBITRAGE OPPORTUNITY. Earn %.4f %s (%.4f BTC)' % (currVal, curr, btc))
             self.debug_arbitrage(pair, arbitrageDescriptor) # arbitrage opportunity
 
