@@ -9,7 +9,7 @@ g_apiKey="acc223ec3b64d19d8aa060bde7af0cb1"
 g_apiSecret="da3eaed8d1a426b51a447634796373ea"
 
 class Exchange():
-    def __init__(self, code, name, coinigyAPI, allowedPairs = [], askbookDepth = 5, bidBookDepth = 5, orderDepth = 50):
+    def __init__(self, code, name, coinigyAPI, allowedPairs = None, askbookDepth = 5, bidBookDepth = 5, orderDepth = 50):
         self.logger = logging.getLogger('exchange')
         self.logger.disabled = True
         self.exchangeName = name
@@ -30,7 +30,7 @@ class Exchange():
             #c = row["exch_code"]
             #id = row["exch_id"]
             #n = row["exch_name"]
-            if not row["mkt_name"] in allowedPairs and not not allowedPairs: # double not to trick Python convert list tp bool
+            if allowedPairs is not None and not row["mkt_name"] in allowedPairs : # double not to trick Python convert list tp bool
                 continue # skipp all pairs which are not present in the allowedlist
             base, quote = row["mkt_name"].split("/")
 
@@ -110,5 +110,5 @@ class Exchange():
                 x = c.get_average_bid_price_for_base_amt(amt) if _bid else c.get_average_ask_price_for_base_amt(amt)
                 return 0 if x == 0 else amt / x
         # no pair found
-        raise Exception("Can't find pair to convert " + _from + " -> " + _to)
+        raise Exception("Can't find pair to convert %s to %s" %( _from , _to ))
 

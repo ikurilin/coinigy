@@ -144,7 +144,13 @@ class PriceArbitrage:
                 p = r.getFXPair()
                 if p in visited_leaves: continue
                 visited_leaves.append(p)
+                if not self.is_book_data_available_in_the_tree(r):
+                    continue
                 self.checkArbitrageOpportunity(p)
+
+    # check if book data is available for all nodes in the route to this node
+    def is_book_data_available_in_the_tree(self, node):
+        return True
 
     # maximum conversion path, default is long / ask
     def estimateLongPathMaxThroughoutput(self, path,  startQuoteValue = None, bid=False):
@@ -186,14 +192,24 @@ class PriceArbitrage:
     def checkArbitrageOpportunity(self, pair):
         arbitrageDescriptor = {
             "long" : {
-                "return" : 0,
-                "path": []
+                "return" : 0.0,
+                "path": [],
+                'max_start_val' : 0.0,
+                's1'  : None,
+                's2' : None
             },
             "short" : {
                 "return" : 0,
-                "path" : []
+                "path" : [],
+                's1' : None,
+                's2'    : None
+            },
+            'max_transaction' : {
+                'currency' : '',
+                'val' : 0.0
             }
         }
+
         for path in self.conversion_paths[pair]:
             #for p in path: # iterate all leaves (each leaf is the same pair but different conversion path)
             #long leg
@@ -216,6 +232,11 @@ class PriceArbitrage:
             if long_ret > arbitrageDescriptor['long']['return']:
                 arbitrageDescriptor['long']['return'] = long_ret
                 arbitrageDescriptor['long']['path'] = path
+                arbitrageDescriptor['long']['s1'] = longMaxVal
+                arbitrageDescriptor['long']['s2'] = s
+                arbitrageDescriptor['long']['max_start_val'] = s['result_val']*2
+                arbitrageDescriptor['max_transaction']['val'] = s['start_val']*2 # in base currency
+                arbitrageDescriptor['max_transaction']['currency'] = s['start_currency']
             # short leg
             shortMaxVal = self.estimateShortPathMaxThroughoutput(path)
             if shortMaxVal['result_val'] == 0:
@@ -232,11 +253,17 @@ class PriceArbitrage:
             if short_ret > arbitrageDescriptor['short']['return']:
                 arbitrageDescriptor['short']['return'] = short_ret
                 arbitrageDescriptor['short']['path'] = path
+                arbitrageDescriptor['short']['s1'] = shortMaxVal
+                arbitrageDescriptor['short']['s2'] = s1
         # calculate arbitrage return
         ret = arbitrageDescriptor['long']['return'] * arbitrageDescriptor['short']['return'] - 1
-        print("Arbitrage %s return: %.2f" % (pair.getPairCode(), ret))
+        print("Arbitrage %s return: %.4f" % (pair.getPairCode(), ret))
         if ret > 0:
-            a= 5 # arbitrage opportunity
+            curr = arbitrageDescriptor['max_transaction']['currency']
+            currVal = arbitrageDescriptor['max_transaction']['val'] * ret
+            btc = self.exchange.convert_amt(curr,'BTC', currVal)
+            print('**** ARBITRAGE OPPORTUNITY. Earn %.4f %s (%.4f BTC)' % (currVal, curr, btc))
+            self.debug_arbitrage(pair, arbitrageDescriptor) # arbitrage opportunity
 
 
     # recalculate arbitrage for a given pair
@@ -349,7 +376,8 @@ class PriceArbitrage:
         longPath = arbitrage['long']['path']
         firstPair = longPath[0]  # first element should be the first pair (zero/0 element is a fake "root" element)
         # start with value of 1 btc in local currency
-        longVal =  self.exchange.convert_amt(arbitrage['max_transaction']['currency'], firstPair.getQuote(), arbitrage['max_transaction']['val'], _bid=False)  # use ASK for algo initialization/
+        longVal =  arbitrage['long']['max_start_val']
+        #self.exchange.convert_amt(arbitrage['max_transaction']['currency'], firstPair.getQuote(), arbitrage['max_transaction']['val'], _bid=False)  # use ASK for algo initialization/
         s= ""
         for p in longPath:
             l = longVal

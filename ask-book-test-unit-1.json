@@ -1,0 +1,2 @@
+{"price": 10.2,"quantity": 10 , "base" : "BTC", "quote" : "EUR", "type" : "ASK"},
+{"price": 10.3,"quantity": 20 , "base" : "BTC", "quote" : "EUR", "type" : "ASK"},
